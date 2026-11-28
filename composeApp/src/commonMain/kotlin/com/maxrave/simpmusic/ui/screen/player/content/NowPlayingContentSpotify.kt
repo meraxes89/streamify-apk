@@ -71,6 +71,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import com.maxrave.simpmusic.ui.navigation.SharedKeys
+import com.maxrave.simpmusic.ui.navigation.sharedHero
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -564,6 +566,13 @@ fun NowPlayingContentSpotify(
                                                         ambientColor = Color.Transparent,
                                                     ),
                                         ) {
+                                            // The Now Playing side of the MiniPlayer↔NowPlaying
+                                            // hero: keyed by the page track's videoId so the
+                                            // morph follows the pager.
+                                            val nowPlayingHeroKey =
+                                                pageTrack?.videoId?.let {
+                                                    SharedKeys.hero(SharedKeys.Origin.NOW_PLAYING_ARTWORK, it)
+                                                }
                                             AsyncImage(
                                                 model =
                                                     ImageRequest
@@ -605,6 +614,12 @@ fun NowPlayingContentSpotify(
                                                         ).background(Color.Transparent)
                                                         .clip(
                                                             ArtworkShape,
+                                                        ).then(
+                                                            if (nowPlayingHeroKey != null) {
+                                                                Modifier.sharedHero(nowPlayingHeroKey)
+                                                            } else {
+                                                                Modifier
+                                                            },
                                                         ).alpha(
                                                             if (!state.screenData.isVideo || !state.shouldShowVideo) 1f else 0f,
                                                         ),
@@ -2118,7 +2133,7 @@ internal fun ColumnScope.SpotifyPlaybackControls(
             textAlign = TextAlign.Left,
         )
         val sweepTransition = rememberInfiniteTransition(label = "nowPlayingCrossfadeSweep")
-        val crossfadeSweep by sweepTransition.animateFloat(
+        val crossfadeSweepState = sweepTransition.animateFloat(
             initialValue = 0f,
             targetValue = 1f,
             animationSpec =
@@ -2134,7 +2149,7 @@ internal fun ColumnScope.SpotifyPlaybackControls(
             visible = timeProgressState.timeline.isCrossfading,
         ) {
             val shimmerSpan = 140f
-            val shimmerHead = crossfadeSweep * (shimmerSpan * 3f) - shimmerSpan
+            val shimmerHead = crossfadeSweepState.value * (shimmerSpan * 3f) - shimmerSpan
             val labelColor = typo().bodyMedium.color
             Text(
                 text = stringResource(Res.string.crossfading),

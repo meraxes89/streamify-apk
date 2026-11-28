@@ -608,6 +608,8 @@
     <string name="update_channel">更新チャンネル</string>
     <string name="enable_liquid_glass_effect">Liquid Glassを有効にする (BETA)</string>
     <string name="enable_liquid_glass_effect_description">iOSのLiquid Glass効果を一部の箇所で有効にします (Android 13以上)</string>
+    <string name="enable_spatial_navigation">空間ナビゲーション (BETA)</string>
+    <string name="enable_spatial_navigation_description">アプリ全体で共有要素のトランジション、予測型バック、共有軸の画面モーションを有効にする</string>
     <string name="your_library">あなたのライブラリ</string>
     <string name="play_explicit_content">明示的なコンテンツを再生</string>
     <string name="play_explicit_content_description">明示的なコンテンツの再生を有効にします</string>
@@ -713,7 +715,7 @@
     <string name="local_tracking_description">再生履歴をローカルデータベースに記録しま す</string>
     <string name="blog_notification_title">ブログ投稿の通知</string>
     <string name="blog_notification_description">新しいブログ投稿が公開されたときに通知されます</string>
-    <string name="simpmusic_charts">SimpMusic チャート</string>
+    <string name="simpmusic_charts">Streamify チャート</string>
     <string name="crossfading">クロスフェード</string>
     <string name="your_320kbps_url">320kbpsのURL</string>
     <string name="your_320kbps_url_description">アップタイムチェッカーから作業中の URL を自動的に選択するには、空白のままにします。</string>

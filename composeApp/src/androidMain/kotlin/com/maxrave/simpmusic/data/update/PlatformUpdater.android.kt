@@ -1,7 +1,11 @@
 package com.maxrave.simpmusic.data.update
 
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.app.PendingIntent
+import android.content.pm.PackageInstaller
+import android.os.Build
 import androidx.core.content.FileProvider
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
@@ -126,14 +130,34 @@ actual object PlatformUpdater : KoinComponent {
         }
     }
 
+    actual fun canAutoInstall(): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            context.packageManager.canRequestPackageInstalls() &&
+            ownsUpdates()
+
+    private fun ownsUpdates(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE ||
+            runCatching {
+                context.packageManager
+                    .getInstallSourceInfo(context.packageName)
+                    .updateOwnerPackageName
+                    .let { it == null || it == context.packageName }
+            }.getOrDefault(false)
+
     actual fun installOrApply(onFallbackOpenUrl: (String) -> Unit, fallbackUrl: String) {
         val ready = _state.value as? UpdateDownloadState.Ready
         if (ready == null) {
             onFallbackOpenUrl(fallbackUrl)
             return
         }
+        val file = File(ready.filePath)
+        if (!file.exists() || file.length() <= 0L) {
+            onFallbackOpenUrl(fallbackUrl)
+            return
+        }
+        if (installViaPackageInstaller(file)) return
+
         runCatching {
-            val file = File(ready.filePath)
             val uri = FileProvider.getUriForFile(context, "${context.packageName}.FileProvider", file)
             val intent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(uri, "application/vnd.android.package-archive")
@@ -146,6 +170,57 @@ actual object PlatformUpdater : KoinComponent {
         }
     }
 
+    private fun installViaPackageInstaller(file: File): Boolean {
+        val installer = context.packageManager.packageInstaller
+        var sessionId = -1
+        return runCatching {
+            val params =
+                PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
+                    setAppPackageName(context.packageName)
+                    setSize(file.length())
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
+                    }
+                }
+            sessionId = installer.createSession(params)
+            installer.openSession(sessionId).use { session ->
+                file.inputStream().use { input ->
+                    session.openWrite("base.apk", 0, file.length()).use { output ->
+                        input.copyTo(output)
+                        session.fsync(output)
+                    }
+                }
+                val flags =
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+                    } else {
+                        PendingIntent.FLAG_UPDATE_CURRENT
+                    }
+                val callback =
+                    PendingIntent.getBroadcast(
+                        context,
+                        sessionId,
+                        Intent(context, UpdateInstallReceiver::class.java),
+                        flags,
+                    )
+                session.commit(callback.intentSender)
+            }
+            true
+        }.onFailure {
+            if (sessionId >= 0) {
+                runCatching { installer.abandonSession(sessionId) }
+            }
+        }.getOrDefault(false)
+    }
+
+    internal fun onPackageInstallResult(status: Int, message: String?) {
+        when (status) {
+            PackageInstaller.STATUS_SUCCESS -> _state.value = UpdateDownloadState.Idle
+            PackageInstaller.STATUS_FAILURE_ABORTED -> Unit
+            else -> _state.value = UpdateDownloadState.Error(message ?: "PackageInstaller failed ($status)")
+        }
+    }
+
     actual fun reset() {
         downloadJob?.cancel()
         downloadJob = null
@@ -153,7 +228,7 @@ actual object PlatformUpdater : KoinComponent {
     }
 
     private fun verifySha256(file: File, expectedSha256: String): Boolean {
-        if (expectedSha256.isBlank()) return file.exists() && file.length() > 0L
+        if (expectedSha256.isBlank() || !file.exists() || file.length() <= 0L) return false
         val digest = MessageDigest.getInstance("SHA-256")
         file.inputStream().use { fis ->
             val buf = ByteArray(16 * 1024)
@@ -164,5 +239,22 @@ actual object PlatformUpdater : KoinComponent {
         }
         val actual = digest.digest().joinToString("") { "%02x".format(it) }
         return actual.equals(expectedSha256.trim(), ignoreCase = true)
+    }
+}
+
+class UpdateInstallReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
+        if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
+            @Suppress("DEPRECATION")
+            val confirmIntent = intent.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)
+            if (confirmIntent != null) {
+                confirmIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                runCatching { context.startActivity(confirmIntent) }
+            }
+            return
+        }
+        val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
+        PlatformUpdater.onPackageInstallResult(status, message)
     }
 }

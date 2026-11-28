@@ -616,6 +616,8 @@ SimpMusic תמיד בחינם וללא פרסומות \n\nנבנה ב-love מא�
     <string name="update_channel">ערוץ עדכונים</string>
     <string name="enable_liquid_glass_effect">הפעל זכוכית נוזלית (בטא)</string>
     <string name="enable_liquid_glass_effect_description">הפעל את אפקט הזכוכית הנוזלית של iOS בחלק מהמקומות (נדרש Android 13 ומעלה)</string>
+    <string name="enable_spatial_navigation">ניווט מרחבי (BETA)</string>
+    <string name="enable_spatial_navigation_description">הפעלת מעברי אלמנטים משותפים, חזרה חזויה ותנועת ציר משותף בכל האפליקציה</string>
     <string name="your_library">הספרייה שלך</string>
     <string name="play_explicit_content">נגן תוכן מפורש</string>
     <string name="play_explicit_content_description">הפעל כדי לנגן תוכן מפורש</string>
@@ -721,7 +723,7 @@ SimpMusic תמיד בחינם וללא פרסומות \n\nנבנה ב-love מא�
     <string name="local_tracking_description">רשום את היסטוריית ההאזנה שלך למסד הנתונים המקומי</string>
     <string name="blog_notification_title">עדכוני פוסט הבלוג</string>
     <string name="blog_notification_description">קבל התראה כאשר פוסט בלוג חדש מפורסם</string>
-    <string name="simpmusic_charts">מצעדי SimpMusic</string>
+    <string name="simpmusic_charts">מצעדי Streamify</string>
     <string name="crossfading">משלב בין השירים</string>
     <string name="your_320kbps_url">קישור ה-320kbps שלך</string>
     <string name="your_320kbps_url_description">השאר ריק כדי לבחור אוטומטית את הקישור העובד מבודק זמן הפעילות.</string>

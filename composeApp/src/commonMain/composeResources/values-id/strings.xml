@@ -495,6 +495,8 @@
     <string name="update_channel">Perbaharui saluran</string>
     <string name="enable_liquid_glass_effect">Aktifkan liquid glass (BETA)</string>
     <string name="enable_liquid_glass_effect_description">Aktifkan efek liquid glass iOS di beberapa posisi (Android 13+)</string>
+    <string name="enable_spatial_navigation">Navigasi spasial (BETA)</string>
+    <string name="enable_spatial_navigation_description">Aktifkan transisi elemen bersama, kembali prediktif, dan gerakan sumbu bersama di seluruh aplikasi</string>
     <string name="your_library">Pustaka Anda</string>
     <string name="play_explicit_content">Putar konten dewasa</string>
     <string name="play_explicit_content_description">Aktifkan untuk memutar konten dewasa</string>
@@ -544,7 +546,7 @@
     <string name="local_tracking_description">Catat riwayat mendengarkan Anda ke basis data lokal</string>
     <string name="blog_notification_title">Pemberitahuan postingan blog</string>
     <string name="blog_notification_description">Dapatkan pemberitahuan saat ada postingan blog baru yang diterbitkan</string>
-    <string name="simpmusic_charts">Tangga lagu SimpMusic</string>
+    <string name="simpmusic_charts">Tangga lagu Streamify</string>
     <string name="crossfading">Memudar</string>
     <string name="your_320kbps_url">URL 320kbps Anda</string>
     <string name="your_320kbps_url_description">Biarkan kosong agar sistem secara otomatis memilih URL yang aktif dari alat pemeriksa status aktif.</string>

@@ -23,6 +23,7 @@ tests: [core/media/media3/src/test/]
 ## Current truth
 
 - Android playback runs two players during crossfade; settings are sampled per buffer by processors.
+- `ArtworkEnrichingPlayer` (`SimpleMediaService` in `core.patch`) proactively prefetches on `delegate` transitions, normalizes bitmaps to opaque `<=512px` JPEG `artworkData`, enriches `getMediaMetadata()`/`getCurrentMediaItem()`/`getMediaItemAt()`, emits `onEvents(EVENT_MEDIA_METADATA_CHANGED)`, and logs platform `MediaMetadata` keys; `CoilBitmapLoader` normalizes hardware/alpha bitmaps to opaque `ARGB_8888`.
 
 ## Interfaces
 
@@ -41,4 +42,4 @@ tests: [core/media/media3/src/test/]
 
 - Add an attention-matrix test and an explicit limiter stage to the processor chain.
 
-<!-- doc-verified-against: dd58e0b3b60e16bed71200d58c9b204431562349 -->
+<!-- doc-verified-against: 1b46593b4163e4022f3500375a32f0a313fc7326 -->

@@ -82,7 +82,7 @@ index 0000000..09e84b4
 @@ -0,0 +1 @@
 +package com.maxrave.common
 diff --git a/data/src/androidMain/kotlin/com/maxrave/data/mediaservice/MediaServiceHandlerImpl.kt b/data/src/androidMain/kotlin/com/maxrave/data/mediaservice/MediaServiceHandlerImpl.kt
-index 6a30090..293b87c 100644
+index 6a30090..bde01f1 100644
 --- a/data/src/androidMain/kotlin/com/maxrave/data/mediaservice/MediaServiceHandlerImpl.kt
 +++ b/data/src/androidMain/kotlin/com/maxrave/data/mediaservice/MediaServiceHandlerImpl.kt
 @@ -110,6 +110,7 @@ import kotlinx.coroutines.runBlocking
@@ -93,7 +93,22 @@ index 6a30090..293b87c 100644
  import kotlinx.serialization.json.Json
  import org.koin.mp.KoinPlatform.getKoin
  import java.util.concurrent.atomic.AtomicBoolean
-@@ -1647,7 +1648,7 @@ internal class MediaServiceHandlerImpl(
+@@ -1093,7 +1094,13 @@ internal class MediaServiceHandlerImpl(
+             }
+ 
+             is PlayerEvent.UpdateProgress -> {
+-                player.seekTo((player.duration * playerEvent.newProgress / 100).toLong())
++                val durationMs =
++                    player.duration.takeIf { it > 0L }
++                        ?: nowPlayingState.value.songEntity?.durationSeconds?.takeIf { it > 0 }?.toLong()?.times(1000L)
++                if (durationMs != null && durationMs > 0L) {
++                    val targetMs = ((durationMs * playerEvent.newProgress) / 100f).toLong().coerceIn(0L, durationMs)
++                    player.seekTo(targetMs)
++                }
+             }
+ 
+             PlayerEvent.Shuffle -> {
+@@ -1647,7 +1654,7 @@ internal class MediaServiceHandlerImpl(
                                              ),
                                      )
                                  }
@@ -102,7 +117,7 @@ index 6a30090..293b87c 100644
                                      Logger.w(TAG, "loadMore: Endless Queue")
                                      val lastTrack =
                                          queueData.value.data.listTracks
-@@ -1677,28 +1678,28 @@ internal class MediaServiceHandlerImpl(
+@@ -1677,28 +1684,28 @@ internal class MediaServiceHandlerImpl(
                          }
                  }
              }
@@ -152,7 +167,7 @@ index 6a30090..293b87c 100644
          }
      }
  
-@@ -2496,8 +2497,8 @@ internal class MediaServiceHandlerImpl(
+@@ -2496,8 +2503,8 @@ internal class MediaServiceHandlerImpl(
      }
  
      override fun mayBeSavePlaybackState() {
@@ -163,7 +178,7 @@ index 6a30090..293b87c 100644
                  dataStoreManager.recoverShuffleAndRepeatKey(
                      player.shuffleModeEnabled,
                      player.repeatMode,
-@@ -2652,9 +2653,13 @@ internal class MediaServiceHandlerImpl(
+@@ -2652,9 +2659,13 @@ internal class MediaServiceHandlerImpl(
          }
  
      override fun shouldReleaseOnTaskRemoved() =
@@ -203,7 +218,7 @@ index db029df..1e1929c 100644
              a.addAll(
                  fetched,
 diff --git a/data/src/commonMain/kotlin/com/maxrave/data/dataStore/DataStoreManagerImpl.kt b/data/src/commonMain/kotlin/com/maxrave/data/dataStore/DataStoreManagerImpl.kt
-index 9befde3..3110e43 100644
+index 9befde3..daec2a2 100644
 --- a/data/src/commonMain/kotlin/com/maxrave/data/dataStore/DataStoreManagerImpl.kt
 +++ b/data/src/commonMain/kotlin/com/maxrave/data/dataStore/DataStoreManagerImpl.kt
 @@ -140,7 +140,7 @@ internal class DataStoreManagerImpl(
@@ -224,6 +239,51 @@ index 9befde3..3110e43 100644
          }
  
      override suspend fun setDownloadQuality(quality: String) {
+@@ -965,7 +965,7 @@ internal class DataStoreManagerImpl(
+ 
+     override val themeMode =
+         settingsDataStore.data.map { preferences ->
+-            preferences[THEME_MODE] ?: DataStoreManager.THEME_MODE_DARK
++            preferences[THEME_MODE] ?: DataStoreManager.THEME_MODE_LIGHT
+         }
+ 
+     override suspend fun setThemeMode(mode: String) {
+@@ -1680,6 +1680,26 @@ internal class DataStoreManagerImpl(
+         }
+     }
+ 
++    override val enableSpatialNavigation: Flow<String>
++        get() =
++            settingsDataStore.data.map { preferences ->
++                preferences[SPATIAL_NAVIGATION] ?: FALSE
++            }
++
++    override suspend fun setEnableSpatialNavigation(enable: Boolean) {
++        withContext(Dispatchers.IO) {
++            if (enable) {
++                settingsDataStore.edit { settings ->
++                    settings[SPATIAL_NAVIGATION] = TRUE
++                }
++            } else {
++                settingsDataStore.edit { settings ->
++                    settings[SPATIAL_NAVIGATION] = FALSE
++                }
++            }
++        }
++    }
++
+     override val explicitContentEnabled: Flow<String> =
+         settingsDataStore.data.map { preferences ->
+             preferences[EXPLICIT_CONTENT_ENABLED] ?: TRUE
+@@ -1997,6 +2017,8 @@ internal class DataStoreManagerImpl(
+ 
+         val LIQUID_GLASS = stringPreferencesKey("liquid_glass")
+ 
++        val SPATIAL_NAVIGATION = stringPreferencesKey("spatial_navigation")
++
+         val EXPLICIT_CONTENT_ENABLED = stringPreferencesKey("explicit_content_enabled")
+ 
+         val DISCORD_TOKEN = stringPreferencesKey("discord_token")
 diff --git a/data/src/commonMain/kotlin/com/maxrave/data/db/SyncDao.kt b/data/src/commonMain/kotlin/com/maxrave/data/db/SyncDao.kt
 index 2c3a3a2..47aa7ee 100644
 --- a/data/src/commonMain/kotlin/com/maxrave/data/db/SyncDao.kt
@@ -268,6 +328,31 @@ index 3903b7e..bbc1166 100644
 +        }
          return eventId
      }
+ 
+diff --git a/data/src/commonMain/kotlin/com/maxrave/data/db/datasource/LocalDataSource.kt b/data/src/commonMain/kotlin/com/maxrave/data/db/datasource/LocalDataSource.kt
+index 94a2a77..a6e2fbc 100644
+--- a/data/src/commonMain/kotlin/com/maxrave/data/db/datasource/LocalDataSource.kt
++++ b/data/src/commonMain/kotlin/com/maxrave/data/db/datasource/LocalDataSource.kt
+@@ -1,6 +1,7 @@
+ package com.maxrave.data.db.datasource
+ 
+ import DatabaseDao
++import com.maxrave.common.Config
+ import com.maxrave.data.db.MusicDatabase
+ import com.maxrave.data.librarysync.SyncChangeRecorder
+ import com.maxrave.data.librarysync.SyncKind
+@@ -282,7 +283,11 @@ internal class LocalDataSource(
+     suspend fun updateSongInLibrary(
+         inLibrary: LocalDateTime,
+         videoId: String,
+-    ) = databaseDao.updateSongInLibrary(inLibrary, videoId)
++    ): Int {
++        val updated = databaseDao.updateSongInLibrary(inLibrary, videoId)
++        syncRecorder.flag(SyncKind.LIBRARY_TRACK, videoId, inLibrary != Config.REMOVED_SONG_DATE_TIME)
++        return updated
++    }
+ 
+     fun getMostPlayedSongs() = databaseDao.getMostPlayedSongs()
  
 diff --git a/data/src/commonMain/kotlin/com/maxrave/data/di/DatabaseModule.kt b/data/src/commonMain/kotlin/com/maxrave/data/di/DatabaseModule.kt
 index 4024528..cca7841 100644
@@ -550,6 +635,20 @@ index 9c816fc..dab2664 100644
          prefs.update { it.copy(lastServerSeq = reply.newSeq, lastSyncAt = nowMillis()) }
          reply.settings?.let { settings.receive(it, desktopName) }
          dao.pruneSent(nowMillis() - SENT_KEPT_MS)
+diff --git a/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncSupport.kt b/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncSupport.kt
+index 61dc9d2..3eb4f9a 100644
+--- a/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncSupport.kt
++++ b/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncSupport.kt
+@@ -17,6 +17,9 @@ internal object SyncKind {
+     /** key: videoId, value "1"/"0". */
+     const val SONG_LIKE = "song_like"
+ 
++    /** key: videoId, value "1"/"0". */
++    const val LIBRARY_TRACK = "library_track"
++
+     /** key: channelId, value "1"/"0". */
+     const val ARTIST_FOLLOW = "artist_follow"
+ 
 diff --git a/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncedSettings.kt b/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncedSettings.kt
 index c113385..233c296 100644
 --- a/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncedSettings.kt
@@ -1055,6 +1154,26 @@ index 9d59c49..1ca8f91 100644
 +    }
  }
 \ No newline at end of file
+diff --git a/domain/src/commonMain/kotlin/com/maxrave/domain/manager/DataStoreManager.kt b/domain/src/commonMain/kotlin/com/maxrave/domain/manager/DataStoreManager.kt
+index 571d943..20546d8 100644
+--- a/domain/src/commonMain/kotlin/com/maxrave/domain/manager/DataStoreManager.kt
++++ b/domain/src/commonMain/kotlin/com/maxrave/domain/manager/DataStoreManager.kt
+@@ -530,6 +530,15 @@ interface DataStoreManager {
+ 
+     suspend fun setEnableLiquidGlass(enable: Boolean)
+ 
++    /**
++     * The beta toggle for the RFC-003 spatial navigation stack (shared-axis transitions,
++     * shared element heroes, predictive back). Off by default: one flag gates the whole
++     * rollout, and the NavHost tree is never swapped when it flips.
++     */
++    val enableSpatialNavigation: Flow<String>
++
++    suspend fun setEnableSpatialNavigation(enable: Boolean)
++
+     /** One of [THEME_MODE_SYSTEM], [THEME_MODE_DARK], [THEME_MODE_LIGHT]. */
+     val themeMode: Flow<String>
+ 
 diff --git a/domain/src/commonMain/kotlin/com/maxrave/domain/repository/AnalyticsRepository.kt b/domain/src/commonMain/kotlin/com/maxrave/domain/repository/AnalyticsRepository.kt
 index 416a581..6f44e1c 100644
 --- a/domain/src/commonMain/kotlin/com/maxrave/domain/repository/AnalyticsRepository.kt
@@ -1515,7 +1634,7 @@ index 62c93a5..91c65a1 100644
  }
  
 diff --git a/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt b/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt
-index e88affc..a4a0c9d 100644
+index e88affc..a6753e1 100644
 --- a/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt
 +++ b/media/media3/src/main/java/com/maxrave/media3/exoplayer/CrossfadeExoPlayerAdapter.kt
 @@ -48,6 +48,7 @@ import com.maxrave.media3.audio.CrossfadeFilterAudioProcessor
@@ -1612,6 +1731,15 @@ index e88affc..a4a0c9d 100644
          castRemotePlayer?.let { remote ->
              internalPlayWhenReady = false
              remote.pause()
+@@ -1293,7 +1300,7 @@ internal class CrossfadeExoPlayerAdapter(
+             castRemotePlayer?.let { remote ->
+                 return remote.duration.takeIf { it > 0 } ?: 0L
+             }
+-            return currentPlayer?.duration ?: cachedDuration
++            return currentPlayer?.duration?.takeIf { it > 0 } ?: cachedDuration
+         }
+ 
+     override val bufferedPosition: Long
 @@ -1493,7 +1500,7 @@ internal class CrossfadeExoPlayerAdapter(
              Logger.w(TAG, "Setting volume to $value")
              internalVolume = value.coerceIn(0f, 1f)
@@ -1635,11 +1763,80 @@ index e88affc..a4a0c9d 100644
                          nextPlayer.volume = fadeInVolume
  
                          // DJ-style filter sweep (alongside volume)
+diff --git a/media/media3/src/main/java/com/maxrave/media3/exoplayer/DelegatingForwardingPlayer.kt b/media/media3/src/main/java/com/maxrave/media3/exoplayer/DelegatingForwardingPlayer.kt
+index 4cbdd1c..6728b97 100644
+--- a/media/media3/src/main/java/com/maxrave/media3/exoplayer/DelegatingForwardingPlayer.kt
++++ b/media/media3/src/main/java/com/maxrave/media3/exoplayer/DelegatingForwardingPlayer.kt
+@@ -4,6 +4,7 @@ import android.view.Surface
+ import android.view.SurfaceHolder
+ import android.view.SurfaceView
+ import android.view.TextureView
++import androidx.media3.common.FlagSet
+ import androidx.media3.common.ForwardingPlayer
+ import androidx.media3.common.MediaItem
+ import androidx.media3.common.Player
+@@ -440,12 +441,25 @@ internal class DelegatingForwardingPlayer(
+ 
+         Logger.d(TAG, "Manually notifying ${trackedListeners.size} listeners about media item change: ${metadata.title}")
+ 
++        val events =
++            Player.Events(
++                FlagSet
++                    .Builder()
++                    .addAll(
++                        Player.EVENT_MEDIA_ITEM_TRANSITION,
++                        Player.EVENT_MEDIA_METADATA_CHANGED,
++                        Player.EVENT_AVAILABLE_COMMANDS_CHANGED,
++                        Player.EVENT_PLAYBACK_STATE_CHANGED,
++                    ).build(),
++            )
++
+         trackedListeners.forEach { listener ->
+             try {
+                 listener.onMediaItemTransition(mediaItem, Player.MEDIA_ITEM_TRANSITION_REASON_AUTO)
+                 listener.onMediaMetadataChanged(metadata)
+                 listener.onAvailableCommandsChanged(commands)
+                 listener.onPlaybackStateChanged(state)
++                listener.onEvents(this, events)
+             } catch (e: Exception) {
+                 Logger.w(TAG, "Error notifying listener about media item change: ${e.message}")
+             }
+diff --git a/media/media3/src/main/java/com/maxrave/media3/extension/Media3Ext.kt b/media/media3/src/main/java/com/maxrave/media3/extension/Media3Ext.kt
+index 6b9c25f..bd2e166 100644
+--- a/media/media3/src/main/java/com/maxrave/media3/extension/Media3Ext.kt
++++ b/media/media3/src/main/java/com/maxrave/media3/extension/Media3Ext.kt
+@@ -33,7 +33,7 @@ fun MediaItem?.toSongEntity(): SongEntity? =
+             isAvailable = true,
+             isExplicit = false,
+             likeStatus = "INDIFFERENT",
+-            thumbnails = this.mediaMetadata.artworkUri.toString(),
++            thumbnails = this.mediaMetadata.artworkUri?.toString(),
+             title = this.mediaMetadata.title.toString(),
+             videoType = "",
+             category = "",
+@@ -60,7 +60,7 @@ fun SongEntity.toMediaItem(): MediaItem {
+                 .Builder()
+                 .setTitle(this.title)
+                 .setArtist(this.artistName?.connectArtists())
+-                .setArtworkUri(this.thumbnails?.toUri())
++                .setArtworkUri(this.thumbnails?.takeIf { it.isNotBlank() && it != "null" }?.toUri())
+                 .setAlbumTitle(this.albumName)
+                 .setDescription(
+                     if (isSong) MERGING_DATA_TYPE.SONG else MERGING_DATA_TYPE.VIDEO,
+@@ -73,7 +73,7 @@ fun SongEntity.toMediaItem(): MediaItem {
+ fun Track.toMediaItem(): MediaItem {
+     var thumbUrl =
+         this.thumbnails?.last()?.url
+-            ?: "http://i.ytimg.com/vi/${this.videoId}/maxresdefault.jpg"
++            ?: "https://i.ytimg.com/vi/${this.videoId}/hqdefault.jpg"
+     if (thumbUrl.contains("w120")) {
+         thumbUrl = Regex("([wh])120").replace(thumbUrl, "$1544")
+     }
 diff --git a/media/media3/src/main/java/com/maxrave/media3/service/SimpleMediaService.kt b/media/media3/src/main/java/com/maxrave/media3/service/SimpleMediaService.kt
-index 64bed3e..f13b274 100644
+index 64bed3e..2c37e65 100644
 --- a/media/media3/src/main/java/com/maxrave/media3/service/SimpleMediaService.kt
 +++ b/media/media3/src/main/java/com/maxrave/media3/service/SimpleMediaService.kt
-@@ -1,8 +1,6 @@
+@@ -1,15 +1,24 @@
  package com.maxrave.media3.service
  
  import android.app.Activity
@@ -1648,7 +1845,51 @@ index 64bed3e..f13b274 100644
  import android.app.PendingIntent
  import android.content.ComponentName
  import android.content.Context
-@@ -96,13 +94,6 @@ internal class SimpleMediaService :
+ import android.content.Intent
++import android.graphics.Bitmap
++import android.graphics.Canvas
++import android.graphics.Color
++import android.media.session.MediaController as PlatformMediaController
++import android.net.Uri
+ import android.os.Binder
++import android.os.Handler
+ import android.os.IBinder
++import androidx.media3.common.FlagSet
++import androidx.media3.common.ForwardingPlayer
++import androidx.media3.common.MediaItem
++import androidx.media3.common.MediaMetadata
+ import androidx.media3.common.Player
++import androidx.media3.common.util.BitmapLoader
+ import androidx.media3.common.util.UnstableApi
+ import androidx.media3.session.DefaultMediaNotificationProvider
+ import androidx.media3.session.MediaController
+@@ -24,10 +33,17 @@ import com.maxrave.media3.R
+ import com.maxrave.media3.extension.toCommandButton
+ import com.maxrave.media3.utils.CoilBitmapLoader
+ import com.maxrave.media3.utils.sizeLimitedForSession
++import kotlinx.coroutines.CoroutineScope
++import kotlinx.coroutines.Dispatchers
++import kotlinx.coroutines.SupervisorJob
++import kotlinx.coroutines.cancel
++import kotlinx.coroutines.launch
+ import kotlinx.coroutines.runBlocking
+ import org.koin.core.component.KoinComponent
+ import org.koin.core.component.inject
+ import org.koin.core.qualifier.named
++import java.io.ByteArrayOutputStream
++import java.util.concurrent.CopyOnWriteArraySet
+ import kotlin.system.exitProcess
+ 
+ @UnstableApi
+@@ -40,6 +56,7 @@ internal class SimpleMediaService :
+     private val coilBitmapLoader: CoilBitmapLoader by inject<CoilBitmapLoader>()
+ 
+     private var mediaSession: MediaLibrarySession? = null
++    private var artworkEnrichingPlayer: ArtworkEnrichingPlayer? = null
+ 
+     private val simpleMediaSessionCallback: MediaLibrarySession.Callback by inject<MediaLibrarySession.Callback>()
+ 
+@@ -96,13 +113,6 @@ internal class SimpleMediaService :
                  )
          }
  
@@ -1662,7 +1903,12 @@ index 64bed3e..f13b274 100644
          val sessionToken = SessionToken(this, ComponentName(this, SimpleMediaService::class.java))
          val controllerFuture = MediaController.Builder(this, sessionToken).buildAsync()
          controllerFuture.addListener({ controllerFuture.get() }, MoreExecutors.directExecutor())
-@@ -152,7 +143,7 @@ internal class SimpleMediaService :
+@@ -149,10 +159,12 @@ internal class SimpleMediaService :
+                 }
+                 // Release handler (contains coroutines and jobs, which also releases the adapter)
+                 simpleMediaServiceHandler.release()
++                artworkEnrichingPlayer?.releaseArtworkLoader()
++                artworkEnrichingPlayer = null
                  mediaSession = null
                  Logger.w("Service", "Simple Media Service Released")
              } catch (e: Exception) {
@@ -1671,7 +1917,7 @@ index 64bed3e..f13b274 100644
              }
          }
      }
-@@ -175,9 +166,9 @@ internal class SimpleMediaService :
+@@ -175,9 +187,9 @@ internal class SimpleMediaService :
      override fun onTaskRemoved(rootIntent: Intent?) {
          Logger.w("Service", "Simple Media Service Task Removed")
          if (simpleMediaServiceHandler.shouldReleaseOnTaskRemoved()) {
@@ -1683,16 +1929,248 @@ index 64bed3e..f13b274 100644
          }
      }
  
-@@ -211,10 +202,4 @@ internal class SimpleMediaService :
+@@ -187,17 +199,21 @@ internal class SimpleMediaService :
+         service: MediaLibraryService,
+         player: Player,
+         callback: MediaLibrarySession.Callback,
+-    ): MediaLibrarySession =
+-        MediaLibrarySession
++    ): MediaLibrarySession {
++        val sessionBitmapLoader = sizeLimitedForSession(service, coilBitmapLoader)
++        val sessionPlayer = ArtworkEnrichingPlayer(service, player, sessionBitmapLoader) { mediaSession }.also {
++            artworkEnrichingPlayer = it
++        }
++        return MediaLibrarySession
+             .Builder(
+                 service,
+-                player,
++                sessionPlayer,
+                 callback,
+             ).setId(this.javaClass.name)
+             // Capped at the platform's own artwork limit so the framework never rescales the shared
+             // bitmap in setMetadata — see sizeLimitedForSession (#2500). Falls back to the plain
+             // loader if the limit cannot be read.
+-            .setBitmapLoader(sizeLimitedForSession(service, coilBitmapLoader))
++            .setBitmapLoader(sessionBitmapLoader)
+             // Tapping the media notification opens whatever the session activity points at, and the
+             // only other place that sets it is MainActivity's bind. A service started without that
+             // bind — a headset/Bluetooth play, Android Auto, a widget, a restart after the process
+@@ -211,10 +227,212 @@ internal class SimpleMediaService :
                  }
              }
              .build()
--
++    }
++
++    @UnstableApi
++    private class ArtworkEnrichingPlayer(
++        private val context: Context,
++        private val delegate: Player,
++        private val bitmapLoader: BitmapLoader,
++        private val sessionProvider: () -> MediaLibrarySession?,
++    ) : ForwardingPlayer(delegate) {
++        private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
++        private val mainHandler = Handler(delegate.applicationLooper)
++        private val listeners = CopyOnWriteArraySet<Player.Listener>()
+ 
 -    private fun isAppInForeground(): Boolean {
 -        val appProcessInfo = RunningAppProcessInfo()
 -        ActivityManager.getMyMemoryState(appProcessInfo)
 -        return appProcessInfo.importance == RunningAppProcessInfo.IMPORTANCE_FOREGROUND
--    }
++        @Volatile
++        private var cachedUri: Uri? = null
++
++        @Volatile
++        private var cachedBytes: ByteArray? = null
++
++        @Volatile
++        private var inFlightUri: Uri? = null
++
++        private val delegateListener =
++            object : Player.Listener {
++                override fun onMediaItemTransition(
++                    mediaItem: MediaItem?,
++                    reason: Int,
++                ) {
++                    val uri = mediaItem?.mediaMetadata?.artworkUri ?: super@ArtworkEnrichingPlayer.getMediaMetadata().artworkUri
++                    if (uri != null && uri != cachedUri) {
++                        prefetchArtwork(uri)
++                    }
++                }
++
++                override fun onMediaMetadataChanged(mediaMetadata: MediaMetadata) {
++                    val uri = mediaMetadata.artworkUri
++                    if (mediaMetadata.artworkData == null && uri != null && uri != cachedUri) {
++                        prefetchArtwork(uri)
++                    }
++                }
++            }
++
++        init {
++            delegate.addListener(delegateListener)
++        }
++
++        override fun addListener(listener: Player.Listener) {
++            listeners.add(listener)
++            super.addListener(listener)
++        }
++
++        override fun removeListener(listener: Player.Listener) {
++            listeners.remove(listener)
++            super.removeListener(listener)
++        }
++
++        override fun getCurrentMediaItem(): MediaItem? {
++            val item = super.getCurrentMediaItem() ?: return null
++            val uri = item.mediaMetadata.artworkUri
++            val bytes =
++                if (item.mediaMetadata.artworkData == null && uri != null && uri == cachedUri) {
++                    cachedBytes
++                } else {
++                    null
++                }
++            return if (bytes != null) {
++                item
++                    .buildUpon()
++                    .setMediaMetadata(
++                        item.mediaMetadata
++                            .buildUpon()
++                            .setArtworkData(bytes, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
++                            .build(),
++                    ).build()
++            } else {
++                item
++            }
++        }
++
++        override fun getMediaItemAt(index: Int): MediaItem {
++            val item = super.getMediaItemAt(index)
++            val uri = item.mediaMetadata.artworkUri
++            val bytes =
++                if (item.mediaMetadata.artworkData == null && uri != null && uri == cachedUri) {
++                    cachedBytes
++                } else {
++                    null
++                }
++            return if (bytes != null) {
++                item
++                    .buildUpon()
++                    .setMediaMetadata(
++                        item.mediaMetadata
++                            .buildUpon()
++                            .setArtworkData(bytes, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
++                            .build(),
++                    ).build()
++            } else {
++                item
++            }
++        }
++
++        override fun getMediaMetadata(): MediaMetadata {
++            val base = super.getMediaMetadata()
++            val uri = base.artworkUri
++            if (base.artworkData == null && uri != null) {
++                val bytes = if (uri == cachedUri) cachedBytes else null
++                if (bytes != null) {
++                    return base.buildUpon()
++                        .setArtworkData(bytes, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
++                        .build()
++                }
++                prefetchArtwork(uri)
++            }
++            return base
++        }
++
++        private fun toCompactOpaqueJpeg(source: Bitmap): ByteArray? {
++            val maxDim = 512
++            val w = source.width
++            val h = source.height
++            val scaled =
++                if (w > maxDim || h > maxDim) {
++                    val scale = maxDim.toFloat() / maxOf(w, h).toFloat()
++                    Bitmap.createScaledBitmap(
++                        source,
++                        (w * scale).toInt().coerceAtLeast(1),
++                        (h * scale).toInt().coerceAtLeast(1),
++                        true,
++                    )
++                } else {
++                    source
++                }
++            val opaque =
++                if (scaled.config == Bitmap.Config.HARDWARE || scaled.hasAlpha()) {
++                    Bitmap.createBitmap(scaled.width, scaled.height, Bitmap.Config.ARGB_8888).also { outBmp ->
++                        val canvas = Canvas(outBmp)
++                        canvas.drawColor(Color.BLACK)
++                        canvas.drawBitmap(scaled, 0f, 0f, null)
++                    }
++                } else {
++                    scaled
++                }
++            val out = ByteArrayOutputStream()
++            opaque.compress(Bitmap.CompressFormat.JPEG, 85, out)
++            if (opaque !== scaled && opaque !== source) opaque.recycle()
++            if (scaled !== source) scaled.recycle()
++            return out.toByteArray().takeIf { it.isNotEmpty() }
++        }
++
++        private fun prefetchArtwork(uri: Uri) {
++            val uriStr = uri.toString()
++            if (uriStr.isBlank() || uriStr == "null") return
++            if (uri == inFlightUri || uri == cachedUri) return
++            inFlightUri = uri
++            scope.launch {
++                val bytes =
++                    try {
++                        val bitmap = bitmapLoader.loadBitmap(uri).get()
++                        toCompactOpaqueJpeg(bitmap)
++                    } catch (e: Exception) {
++                        Logger.w("ArtworkEnrichingPlayer", "Failed to load artwork for $uri: ${e.message}")
++                        null
++                    }
++
++                mainHandler.post {
++                    if (inFlightUri == uri) {
++                        inFlightUri = null
++                    }
++                    if (bytes == null) return@post
++                    val current = super.getMediaMetadata()
++                    if (current.artworkUri != uri) return@post
++                    cachedUri = uri
++                    cachedBytes = bytes
++                    val enriched = current.buildUpon()
++                        .setArtworkData(bytes, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
++                        .build()
++                    val events =
++                        Player.Events(
++                            FlagSet
++                                .Builder()
++                                .add(Player.EVENT_MEDIA_METADATA_CHANGED)
++                                .build(),
++                        )
++                    listeners.forEach { listener ->
++                        listener.onMediaMetadataChanged(enriched)
++                        listener.onEvents(this@ArtworkEnrichingPlayer, events)
++                    }
++                    val platformKeys =
++                        runCatching {
++                            sessionProvider()?.platformToken?.let { token ->
++                                PlatformMediaController(context, token).metadata?.keySet()?.sorted()?.joinToString(",")
++                            }
++                        }.getOrNull()
++                    Logger.w(
++                        "ArtworkEnrichingPlayer",
++                        "Enriched $uri (${bytes.size}B, listeners=${listeners.size}, platformKeys=$platformKeys)",
++                    )
++                }
++            }
++        }
++
++        fun releaseArtworkLoader() {
++            delegate.removeListener(delegateListener)
++            scope.cancel()
++            listeners.clear()
++        }
+     }
 -}
 \ No newline at end of file
 +}
@@ -1811,6 +2289,78 @@ index cf08060..39024b5 100644
              }
          }
      }
+diff --git a/media/media3/src/main/java/com/maxrave/media3/utils/CoilBitmapLoader.kt b/media/media3/src/main/java/com/maxrave/media3/utils/CoilBitmapLoader.kt
+index 4858d5d..66b400c 100644
+--- a/media/media3/src/main/java/com/maxrave/media3/utils/CoilBitmapLoader.kt
++++ b/media/media3/src/main/java/com/maxrave/media3/utils/CoilBitmapLoader.kt
+@@ -4,6 +4,8 @@ import android.annotation.SuppressLint
+ import android.content.Context
+ import android.graphics.Bitmap
+ import android.graphics.BitmapFactory
++import android.graphics.Canvas
++import android.graphics.Color
+ import android.net.Uri
+ import android.util.TypedValue
+ import androidx.media3.common.util.BitmapLoader
+@@ -37,22 +39,53 @@ class CoilBitmapLoader(
+ 
+     override fun loadBitmap(uri: Uri): ListenableFuture<Bitmap> =
+         coroutineScope.future(Dispatchers.IO) {
+-            val result =
+-                (
++            val raw = uri.toString()
++            if (raw.isBlank() || raw == "null") {
++                throw ExecutionException(IllegalArgumentException("Empty artwork URI"))
++            }
++            val normalizedUri =
++                if (raw.startsWith("http://i.ytimg.com/", ignoreCase = true)) {
++                    Uri.parse("https://" + raw.removePrefix("http://"))
++                } else {
++                    uri
++                }
++            var result =
++                context.imageLoader.execute(
++                    ImageRequest
++                        .Builder(context)
++                        .data(normalizedUri)
++                        .allowHardware(false)
++                        .build(),
++                )
++            if (result is ErrorResult && normalizedUri.toString().endsWith("/maxresdefault.jpg")) {
++                val fallbackUri = Uri.parse(normalizedUri.toString().replace("/maxresdefault.jpg", "/hqdefault.jpg"))
++                Logger.w("CoilBitmapLoader", "maxresdefault failed for $normalizedUri, retrying $fallbackUri")
++                result =
+                     context.imageLoader.execute(
+                         ImageRequest
+                             .Builder(context)
+-                            .data(uri)
++                            .data(fallbackUri)
+                             .allowHardware(false)
+                             .build(),
+                     )
+-                )
++            }
+             if (result is ErrorResult) {
++                Logger.w("CoilBitmapLoader", "loadBitmap failed for $normalizedUri: ${result.throwable.message}")
+                 throw ExecutionException(result.throwable)
+             }
+             try {
+-                result.image?.toBitmap() ?: throw ExecutionException(NullPointerException())
++                val bmp = result.image?.toBitmap() ?: throw ExecutionException(NullPointerException())
++                if (bmp.config == Bitmap.Config.HARDWARE || bmp.hasAlpha()) {
++                    Bitmap.createBitmap(bmp.width, bmp.height, Bitmap.Config.ARGB_8888).also { out ->
++                        val canvas = Canvas(out)
++                        canvas.drawColor(Color.BLACK)
++                        canvas.drawBitmap(bmp, 0f, 0f, null)
++                    }
++                } else {
++                    bmp
++                }
+             } catch (e: Exception) {
++                Logger.w("CoilBitmapLoader", "toBitmap failed for $normalizedUri: ${e.message}")
+                 throw ExecutionException(e)
+             }
+         }
 diff --git a/service/discord/build.gradle.kts b/service/discord/build.gradle.kts
 index 4a92fcc..7321237 100644
 --- a/service/discord/build.gradle.kts
@@ -2438,42 +2988,3 @@ index 0000000..41ade74
 +}
 +
 +actual fun createBrotliEncoder(): ContentEncoder = BrotliEncoder
-diff --git a/data/src/commonMain/kotlin/com/maxrave/data/db/datasource/LocalDataSource.kt b/data/src/commonMain/kotlin/com/maxrave/data/db/datasource/LocalDataSource.kt
-index 94a2a77..a6e2fbc 100644
---- a/data/src/commonMain/kotlin/com/maxrave/data/db/datasource/LocalDataSource.kt
-+++ b/data/src/commonMain/kotlin/com/maxrave/data/db/datasource/LocalDataSource.kt
-@@ -1,6 +1,7 @@
- package com.maxrave.data.db.datasource
- 
- import DatabaseDao
-+import com.maxrave.common.Config
- import com.maxrave.data.db.MusicDatabase
- import com.maxrave.data.librarysync.SyncChangeRecorder
- import com.maxrave.data.librarysync.SyncKind
-@@ -282,7 +283,11 @@ internal class LocalDataSource(
-     suspend fun updateSongInLibrary(
-         inLibrary: LocalDateTime,
-         videoId: String,
--    ) = databaseDao.updateSongInLibrary(inLibrary, videoId)
-+    ): Int {
-+        val updated = databaseDao.updateSongInLibrary(inLibrary, videoId)
-+        syncRecorder.flag(SyncKind.LIBRARY_TRACK, videoId, inLibrary != Config.REMOVED_SONG_DATE_TIME)
-+        return updated
-+    }
- 
-     fun getMostPlayedSongs() = databaseDao.getMostPlayedSongs()
- 
-diff --git a/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncSupport.kt b/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncSupport.kt
-index 61dc9d2..3eb4f9a 100644
---- a/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncSupport.kt
-+++ b/data/src/commonMain/kotlin/com/maxrave/data/librarysync/SyncSupport.kt
-@@ -17,6 +17,9 @@ internal object SyncKind {
-     /** key: videoId, value "1"/"0". */
-     const val SONG_LIKE = "song_like"
- 
-+    /** key: videoId, value "1"/"0". */
-+    const val LIBRARY_TRACK = "library_track"
-+
-     /** key: channelId, value "1"/"0". */
-     const val ARTIST_FOLLOW = "artist_follow"
- 

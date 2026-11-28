@@ -10,9 +10,11 @@ fun <T> runBlocking(
 ): T {
     var result: T? = null
     var exception: Throwable? = null
+    var completed = false
     val continuation = object : kotlin.coroutines.Continuation<T> {
         override val context: CoroutineContext = context
         override fun resumeWith(res: Result<T>) {
+            completed = true
             res.onSuccess { result = it }
             res.onFailure { exception = it }
         }
@@ -22,7 +24,11 @@ fun <T> runBlocking(
     }
     block.startCoroutine(scope, continuation)
     exception?.let { throw it }
-    return result ?: ("" as T)
+    if (!completed) {
+        throw UnsupportedOperationException("runBlocking cannot suspend on wasmJs")
+    }
+    @Suppress("UNCHECKED_CAST")
+    return result as T
 }
 
 val Dispatchers.IO: CoroutineDispatcher get() = Dispatchers.Default

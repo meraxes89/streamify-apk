@@ -1,6 +1,7 @@
 package com.streamify.supabase
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -14,6 +15,16 @@ actual object StreamifyAuthManager {
     private val _authState = MutableStateFlow<AuthState>(AuthState.Unauthenticated)
     actual val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
+    private val flowCoordinator = OAuthFlowCoordinator()
+    actual val isAuthenticating: StateFlow<Boolean> = flowCoordinator.isAuthenticating
+    actual val authError: StateFlow<String?> = flowCoordinator.authError
+
+    actual fun submitAuthCallback(callbackUri: String, context: Any?) {
+        flowCoordinator.submitCallback { handleAuthCallback(callbackUri, context) }
+    }
+
+    actual fun clearAuthError() = flowCoordinator.clearError()
+
     private var pendingCodeVerifier: String? = null
     private var pendingState: String? = null
     private var pendingRedirectUri: String? = null
@@ -21,7 +32,17 @@ actual object StreamifyAuthManager {
     private var activeCompletionDeferred: CompletableDeferred<Result<UserProfile>>? = null
 
     actual fun init(context: Any?) {
-        if (SupabaseClient.hasValidUserSession()) {
+        PlatformTokenStore.init(context)
+        val restored = SupabaseClient.restorePersistedSession()
+        if (restored != null) {
+            _authState.value = AuthState.Authenticated(restored.user)
+            val refreshToken = restored.refreshToken
+            if (!refreshToken.isNullOrBlank()) {
+                CoroutineScope(Dispatchers.IO).launch {
+                    SupabaseClient.refreshSession(refreshToken)
+                }
+            }
+        } else if (SupabaseClient.hasValidUserSession()) {
             val user = SupabaseClient.currentUser.value ?: SupabaseConfig.DEFAULT_USER
             _authState.value = AuthState.Authenticated(user)
         } else {
@@ -36,24 +57,15 @@ actual object StreamifyAuthManager {
         activeCompletionDeferred = completion
 
         try {
-            val verifier = PkceCrypto.generateCodeVerifier()
-            val challenge = PkceCrypto.deriveCodeChallenge(verifier)
-            val state = PkceCrypto.generateState()
-
+            val session = OAuthPkceSession.createSession()
             val port = server.start()
             val redirectUri = "http://127.0.0.1:$port/callback"
 
-            pendingCodeVerifier = verifier
-            pendingState = state
+            pendingCodeVerifier = session.verifier
+            pendingState = session.state
             pendingRedirectUri = redirectUri
 
-            val authUrl = "${SupabaseConfig.SUPABASE_URL}/auth/v1/authorize?" +
-                    "provider=google" +
-                    "&redirect_to=${redirectUri}" +
-                    "&code_challenge=${challenge}" +
-                    "&code_challenge_method=S256" +
-                    "&state=${state}" +
-                    "&prompt=select_account"
+            val authUrl = OAuthPkceSession.buildAuthorizeUrl(redirectUri, session)
 
             launchSystemBrowser(authUrl)
 
@@ -75,8 +87,17 @@ actual object StreamifyAuthManager {
                     return@launch
                 }
 
-                if (callbackData.state != state) {
-                    completion.complete(Result.failure(SecurityException("CSRF security state mismatch")))
+                val validation = OAuthPkceSession.validateCallback(
+                    callbackData = callbackData,
+                    storedState = session.state,
+                    storedVerifier = session.verifier,
+                    storedTimestampMs = session.timestampMs
+                )
+
+                if (validation.isFailure) {
+                    completion.complete(
+                        Result.failure(validation.exceptionOrNull() ?: SecurityException("Validation failed"))
+                    )
                     return@launch
                 }
 
@@ -88,7 +109,7 @@ actual object StreamifyAuthManager {
 
                 val exchangeResult = SupabaseClient.exchangeCodeForSession(
                     code = code,
-                    codeVerifier = verifier,
+                    codeVerifier = validation.getOrThrow(),
                     redirectUri = redirectUri
                 )
 
@@ -131,16 +152,24 @@ actual object StreamifyAuthManager {
                 val verifier = pendingCodeVerifier
                     ?: return@withContext Result.failure(Exception("No pending PKCE code verifier in session"))
 
-                val expectedState = pendingState
-                if (expectedState != null && data.state != null && data.state != expectedState) {
-                    val err = Result.failure<UserProfile>(SecurityException("CSRF state mismatch"))
+                val validation = OAuthPkceSession.validateCallback(
+                    callbackData = data,
+                    storedState = pendingState,
+                    storedVerifier = verifier
+                )
+
+                if (validation.isFailure) {
+                    val err = Result.failure<UserProfile>(
+                        validation.exceptionOrNull() ?: SecurityException("Validation failed")
+                    )
                     activeCompletionDeferred?.complete(err)
                     activeServer?.stop()
                     return@withContext err
                 }
 
+                val verifiedVerifier = validation.getOrThrow()
                 val redirectUri = pendingRedirectUri ?: "streamify://callback"
-                val result = SupabaseClient.exchangeCodeForSession(code, verifier, redirectUri)
+                val result = SupabaseClient.exchangeCodeForSession(code, verifiedVerifier, redirectUri)
                 result.onSuccess { profile ->
                     _authState.value = AuthState.Authenticated(profile)
                 }
@@ -150,16 +179,11 @@ actual object StreamifyAuthManager {
                 return@withContext result
             }
 
-            // Legacy implicit token fallback
-            val accessToken = data.accessToken
-            if (!accessToken.isNullOrBlank()) {
-                val result = SupabaseClient.signInWithAccessToken(accessToken, data.refreshToken)
-                result.onSuccess { profile ->
-                    _authState.value = AuthState.Authenticated(profile)
-                }
-                activeCompletionDeferred?.complete(result)
+            if (!data.accessToken.isNullOrBlank()) {
+                val err = Result.failure<UserProfile>(SecurityException("Implicit access_token flow is disabled; PKCE code required"))
+                activeCompletionDeferred?.complete(err)
                 activeServer?.stop()
-                return@withContext result
+                return@withContext err
             }
 
             val noTokenErr = Result.failure<UserProfile>(Exception("No authorization code or access token found in callback URI"))
@@ -189,14 +213,19 @@ actual object StreamifyAuthManager {
             avatarUrl = "",
             isAdmin = false,
         )
+        PlatformTokenStore.clear()
         SupabaseClient.setSession(null, guest)
         _authState.value = AuthState.Authenticated(guest)
         return Result.success(guest)
     }
 
     actual fun signOut(context: Any?) {
+        val tokenToRevoke = SupabaseClient.accessToken.value
         _authState.value = AuthState.Unauthenticated
         SupabaseClient.clearSession()
+        CoroutineScope(Dispatchers.IO).launch {
+            SupabaseClient.signOutRemote(tokenToRevoke)
+        }
     }
 
     private fun launchSystemBrowser(url: String) {

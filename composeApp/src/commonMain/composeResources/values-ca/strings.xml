@@ -482,6 +482,8 @@
     <string name="update_channel">Canal d'actualitzacions</string>
     <string name="enable_liquid_glass_effect">Activa liquid glass (BETA)</string>
     <string name="enable_liquid_glass_effect_description">Activa l'efecte de vidre líquid d'iOS en alguna posició (Android 13+)</string>
+    <string name="enable_spatial_navigation">Navegació espacial (BETA)</string>
+    <string name="enable_spatial_navigation_description">Activa transicions d'elements compartits, enrere predictiu i moviment d'eix compartit per tota l'app</string>
     <string name="your_library">La seva biblioteca</string>
     <string name="play_explicit_content">Reprodueix el contingut explícit</string>
     <string name="play_explicit_content_description">Activa per reproduir contingut explícit</string>
@@ -529,7 +531,7 @@
     <string name="quit_app">Surt de l'aplicació</string>
     <string name="local_tracking_title">Seguiment local de l'historial d'escolta</string>
     <string name="local_tracking_description">Registra l'historial d'escolta a la base de dades local</string>
-    <string name="simpmusic_charts">Llistes d'èxits de SimpMusic</string>
+    <string name="simpmusic_charts">Llistes d'èxits de Streamify</string>
     <string name="crossfading">Transició gradual</string>
     <string name="your_320kbps_url">El teu URL de 320 kbps</string>
     <string name="your_320kbps_url_description">Deixa-ho en blanc per seleccionar automàticament un URL operatiu des del verificador d'estat.</string>

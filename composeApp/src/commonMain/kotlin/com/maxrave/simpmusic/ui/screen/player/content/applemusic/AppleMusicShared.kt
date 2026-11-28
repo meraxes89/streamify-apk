@@ -602,7 +602,7 @@ internal fun AppleMusicTimesRow(
             // crossfade check it would restart from zero every time the label appears, which is the
             // same reason the other two styles declare it outside their own visibility gate.
             val sweepTransition = rememberInfiniteTransition(label = "appleMusicCrossfadeSweep")
-            val crossfadeSweep by sweepTransition.animateFloat(
+            val crossfadeSweepState = sweepTransition.animateFloat(
                 initialValue = 0f,
                 targetValue = 1f,
                 animationSpec =
@@ -621,11 +621,12 @@ internal fun AppleMusicTimesRow(
                 targetValue = if (!timeline.isCrossfading && quality != null) 1f else 0f,
                 label = "appleMusicQualityLabelAlpha",
             )
-            Box(modifier = Modifier.alpha(crossfadeLabelAlpha)) {
-                // Identical treatment to Classic and M3 Expressive: a highlight swept through the
-                // glyphs with a text brush — no overlay, no clipping.
-                val shimmerSpan = 140f
-                val shimmerHead = crossfadeSweep * (shimmerSpan * 3f) - shimmerSpan
+            Box(modifier = Modifier.graphicsLayer { alpha = crossfadeLabelAlpha }) {
+                if (crossfadeLabelAlpha > 0f) {
+                    // Identical treatment to Classic and M3 Expressive: a highlight swept through the
+                    // glyphs with a text brush — no overlay, no clipping.
+                    val shimmerSpan = 140f
+                    val shimmerHead = crossfadeSweepState.value * (shimmerSpan * 3f) - shimmerSpan
                 val labelColor = typography.times.color
                 Text(
                     text = stringResource(Res.string.crossfading),
@@ -645,6 +646,7 @@ internal fun AppleMusicTimesRow(
                         ),
                     textAlign = TextAlign.Center,
                 )
+                }
             }
             // The quality line: a small headphones glyph ahead of the stream's own figures,
             // bare on the page and dimmer than the times either side of it. The figures change

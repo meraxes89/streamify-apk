@@ -64,6 +64,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
+import com.maxrave.simpmusic.ui.navigation.SharedKeys
+import com.maxrave.simpmusic.ui.navigation.sharedHero
 import coil3.compose.LocalPlatformContext
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
@@ -238,7 +240,8 @@ fun PodcastScreen(
                                                 .height(250.dp)
                                                 .wrapContentWidth()
                                                 .align(Alignment.CenterHorizontally)
-                                                .clip(ArtworkShape),
+                                                .clip(ArtworkShape)
+                                                .sharedHero(SharedKeys.hero(SharedKeys.Origin.PODCAST, podcastId)),
                                     )
                                     Box(
                                         modifier =

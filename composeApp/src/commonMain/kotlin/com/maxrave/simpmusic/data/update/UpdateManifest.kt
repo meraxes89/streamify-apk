@@ -1,6 +1,10 @@
 package com.maxrave.simpmusic.data.update
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.Serializable
+import kotlin.concurrent.Volatile
 
 @Serializable
 data class UpdateArtifact(
@@ -22,10 +26,14 @@ data class UpdateManifest(
     val publishedAt: String? = null,
     val changelog: String = "",
     val artifacts: Map<String, UpdateArtifact> = emptyMap(),
+    val signatureHex: String = "",
 )
 
 sealed interface UpdateResult {
-    data class Available(val manifest: UpdateManifest) : UpdateResult
+    data class Available(
+        val manifest: UpdateManifest,
+        val isPolicyVerified: Boolean = false,
+    ) : UpdateResult
     data class TagOnly(val tag: String) : UpdateResult
     data object UpToDate : UpdateResult
     data class Error(val message: String) : UpdateResult
@@ -67,10 +75,97 @@ fun remainingGraceHours(
     return ((remainingMs + 3_599_999L) / 3_600_000L).toInt()
 }
 
+data class UpdatePolicyState(
+    val latestManifest: UpdateManifest? = null,
+    val isPolicyVerified: Boolean = false,
+    val isBreaking: Boolean = false,
+    val urgency: UpdateUrgency = UpdateUrgency.SOFT,
+    val remainingHours: Int = 48,
+) {
+    /**
+     * Capability gate for online streaming: only enforced when a cryptographically verified
+     * policy reaches [UpdateUrgency.ENFORCED]. Offline downloaded tracks always remain playable.
+     */
+    val isOnlineStreamingBlocked: Boolean
+        get() = isPolicyVerified && urgency == UpdateUrgency.ENFORCED
+}
+
+internal fun shaMatches(a: String, b: String): Boolean {
+    val left = a.trim()
+    val right = b.trim()
+    if (left.isEmpty() || right.isEmpty()) return false
+    return left.startsWith(right, ignoreCase = true) || right.startsWith(left, ignoreCase = true)
+}
+
+fun evaluateUpdatePolicy(
+    manifest: UpdateManifest?,
+    installedCode: Int,
+    installedSha: String = "",
+    firstSeenAtMs: Long,
+    nowMs: Long,
+    isPolicyVerified: Boolean,
+): UpdatePolicyState {
+    if (manifest == null) return UpdatePolicyState()
+    val isRecalled = installedSha.isNotBlank() && manifest.recalledShas.any { shaMatches(it, installedSha) }
+    val isBreaking =
+        manifest.isBreaking ||
+            isRecalled ||
+            (manifest.minSupportedVersionCode > 0 && installedCode < manifest.minSupportedVersionCode)
+    val urgency = computeUpdateUrgency(firstSeenAtMs, nowMs, manifest.graceHours, isBreaking)
+    val remaining = remainingGraceHours(firstSeenAtMs, nowMs, manifest.graceHours)
+    return UpdatePolicyState(
+        latestManifest = manifest,
+        isPolicyVerified = isPolicyVerified,
+        isBreaking = isBreaking,
+        urgency = urgency,
+        remainingHours = remaining,
+    )
+}
+
+object UpdatePreferences {
+    const val KEY_NIGHTLY_ENABLED = "STREAMIFY_NIGHTLY_UPDATES"
+    const val KEY_AUTO_INSTALL_ENABLED = "STREAMIFY_AUTO_INSTALL_UPDATES"
+}
+
+/**
+ * Returns true when an already-downloaded verified update should auto-install:
+ * either playback is paused/stopped, or the player/user shifted to a different track.
+ */
+fun shouldTriggerAutoInstall(
+    initialMediaId: String?,
+    currentMediaId: String?,
+    isPlaying: Boolean?,
+): Boolean {
+    if (isPlaying != true) return true
+    if (!initialMediaId.isNullOrBlank() && !currentMediaId.isNullOrBlank() && currentMediaId != initialMediaId) {
+        return true
+    }
+    return false
+}
+
 object UpdateStateHolder {
-    var latestManifest: UpdateManifest? = null
-    var isBreaking: Boolean = false
-    var urgency: UpdateUrgency = UpdateUrgency.SOFT
-    var remainingHours: Int = 48
+    private val _state = MutableStateFlow(UpdatePolicyState())
+    val state: StateFlow<UpdatePolicyState> = _state.asStateFlow()
+
+    @Volatile
+    var nightlyEnabled: Boolean = false
+
+    @Volatile
+    var autoInstallEnabled: Boolean = true
+
+    val latestManifest: UpdateManifest? get() = _state.value.latestManifest
+    val isPolicyVerified: Boolean get() = _state.value.isPolicyVerified
+    val isBreaking: Boolean get() = _state.value.isBreaking
+    val urgency: UpdateUrgency get() = _state.value.urgency
+    val remainingHours: Int get() = _state.value.remainingHours
+    val isOnlineStreamingBlocked: Boolean get() = _state.value.isOnlineStreamingBlocked
+
+    fun update(newState: UpdatePolicyState) {
+        _state.value = newState
+    }
+
+    fun clear() {
+        _state.value = UpdatePolicyState()
+    }
 }
 

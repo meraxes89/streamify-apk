@@ -18,14 +18,7 @@ object StreamifyDefaultsInitializer {
 
     suspend fun initialize(dataStoreManager: DataStoreManager) {
         try {
-            // 1. Light Mode default
-            val currentTheme = dataStoreManager.themeMode.first()
-            if (currentTheme == DataStoreManager.THEME_MODE_DARK) {
-                Logger.d("Streamify: Setting default theme mode to LIGHT", TAG)
-                dataStoreManager.setThemeMode(DataStoreManager.THEME_MODE_LIGHT)
-            }
-
-            // 2. Enable local tracking so Analytics page and Wrapped function out-of-the-box
+            // 1. Enable local tracking so Analytics page and Wrapped function out-of-the-box
             val isTracking = dataStoreManager.localTrackingEnabled.first()
             if (isTracking != DataStoreManager.TRUE) {
                 Logger.d("Streamify: Enabling local tracking for Analytics default", TAG)

@@ -530,6 +530,8 @@
     <string name="update_channel">Zaktualizuj kanał</string>
     <string name="enable_liquid_glass_effect">Włącz efekt płynnego szkła (BETA)</string>
     <string name="enable_liquid_glass_effect_description">Włącz efekt płynnego szkła z iOS w pewnej pozycji (Android 13+)</string>
+    <string name="enable_spatial_navigation">Nawigacja przestrzenna (BETA)</string>
+    <string name="enable_spatial_navigation_description">Włącz przejścia współdzielonych elementów, predykcyjny powrót i ruch współdzielonej osi w całej aplikacji</string>
     <string name="your_library">Twoja biblioteka</string>
     <string name="play_explicit_content">Odtwarzaj obraźliwe treści</string>
     <string name="play_explicit_content_description">Włącz, aby móc odtwarzać wulgarne lub obraźliwe treści</string>

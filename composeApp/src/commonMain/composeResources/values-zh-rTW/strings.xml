@@ -587,6 +587,8 @@
     <string name="update_channel">更新頻道</string>
     <string name="enable_liquid_glass_effect">啟用 Liquid Glass 效果（測試版）</string>
     <string name="enable_liquid_glass_effect_description">在某些位置啟用 iOS 的液態玻璃效果（Android 13+）</string>
+    <string name="enable_spatial_navigation">空間導覽 (BETA)</string>
+    <string name="enable_spatial_navigation_description">在整個應用程式中啟用共享元素轉場、預測性返回和共享軸畫面動態</string>
     <string name="your_library">我的音樂庫</string>
     <string name="play_explicit_content">播放露骨內容</string>
     <string name="play_explicit_content_description">允許播放露骨內容</string>
@@ -692,7 +694,7 @@
     <string name="local_tracking_description">將您的收聽歷史記錄到本機資料庫</string>
     <string name="blog_notification_title">部落格文章通知</string>
     <string name="blog_notification_description">在新文章發佈時接收通知</string>
-    <string name="simpmusic_charts">SimpMusic排行榜</string>
+    <string name="simpmusic_charts">Streamify排行榜</string>
     <string name="crossfading">交叉淡入淡出</string>
     <string name="your_320kbps_url">您的 320kbps URL</string>
     <string name="your_320kbps_url_description">保持空白以自動選擇上一次工作中的URL。</string>

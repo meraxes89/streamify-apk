@@ -1,0 +1,160 @@
+name: Sync Governance (S23)
+
+on:
+  pull_request:
+    paths:
+      - 'supabase/**'
+      - 'docs/contracts/**'
+      - 'streamify-modules/supabase/**'
+      - 'composeApp/src/**/sync/**'
+      - '.github/workflows/sync-governance-s23.yml'
+
+jobs:
+  contract-and-guardrails:
+    name: Contract Manifest & Architectural Guardrails
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+          fetch-depth: 0
+
+      - name: Validate sync-contract-v5.json schema
+        run: |
+          python3 - <<'PY'
+          import json, pathlib
+          manifest = json.loads(pathlib.Path("docs/contracts/sync-contract-v5.json").read_text())
+          assert manifest["contract_version"] == 5, "contract_version must be 5"
+          assert isinstance(manifest.get("rpcs"), dict) and len(manifest["rpcs"]) >= 20, "expected Plane A-F RPCs"
+          for name, spec in manifest["rpcs"].items():
+              assert spec.get("plane") in {"A", "B", "C", "D", "F"}, f"invalid plane for {name}"
+              assert isinstance(spec.get("args"), list), f"args must be list for {name}"
+          print(f"Validated {len(manifest['rpcs'])} RPC contracts in sync-contract-v5.json")
+          PY
+
+      - name: Enforce 14-digit UTC migration naming for v5+ SQL files
+        run: |
+          python3 - <<'PY'
+          import pathlib, re, sys
+          LEGACY_PRE_V5 = {
+              "2026_01_stats_overhaul.sql",
+              "2026_11_drift_catchup.sql",
+              "2026_11_p0_sec_and_bloat_lockdown.sql",
+              "2026_11_p1_additive_schema_staging.sql",
+              "2026_11_p2_rpcs_triggers_indexes.sql",
+              "2026_11_p4_view_bridge_and_decommission.sql",
+              "2026_11_p5_v4_1_library_and_playlist_deltas.sql",
+              "2026_11_p6_v4_1_podcast_episode_state.sql",
+              "2026_11_p7_v4_1_device_fleet_and_version_telemetry.sql",
+              "2026_11_p8_v4_server_contract_and_lww_hardening.sql",
+              "2026_11_sec10_rls_hardening.sql",
+              "2026_11_sync_v2_unification.sql",
+              "2026_11_sync_v3_user_graph.sql",
+              "2026_11_ws_w_canary_results.sql",
+          }
+          mig_dir = pathlib.Path("supabase/migrations")
+          bad = []
+          for p in sorted(mig_dir.glob("*.sql")):
+              if p.name in LEGACY_PRE_V5:
+                  continue
+              if not re.match(r"^\d{14}_[a-z0-9_]+\.sql$", p.name):
+                  bad.append(p.name)
+          if bad:
+              print("Invalid v5+ migration filename(s) (expected YYYYMMDDHHMMSS_name.sql):", bad)
+              sys.exit(1)
+          print("All v5+ migration filenames match YYYYMMDDHHMMSS_*.sql")
+          PY
+
+      - name: Check core/ submodule boundary and reflection-free sync/ guardrails
+        run: |
+          python3 - <<'PY'
+          import pathlib, subprocess, sys
+          base_ref = "origin/main"
+          has_origin_main = subprocess.run(["git", "rev-parse", "--verify", base_ref], capture_output=True).returncode == 0
+          diff_cmd = ["git", "diff", "--name-only", f"{base_ref}...HEAD", "--", "core/"] if has_origin_main else ["git", "diff", "--name-only", "HEAD", "--", "core/"]
+          diff = subprocess.check_output(diff_cmd, text=True).strip()
+          if diff:
+              print("Forbidden changes inside core/ submodule:", diff)
+              sys.exit(1)
+          # Guard against new Class.forName usage in v5 sync packages
+          v5_root = pathlib.Path("composeApp/src")
+          offenders = []
+          for kt in v5_root.rglob("*.kt"):
+              if "/sync/v5/" in kt.as_posix() or "/sync/api/" in kt.as_posix():
+                  if "Class.forName" in kt.read_text(encoding="utf-8", errors="ignore"):
+                      offenders.append(str(kt))
+          if offenders:
+              print("Class.forName forbidden in v5 sync packages:", offenders)
+              sys.exit(1)
+          print("Guardrails passed: core/ untouched, zero Class.forName in v5 sync packages")
+          PY
+
+      - name: Verify KMP client RPC parity with sync-contract-v5.json (Planes A-F)
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, re
+          manifest = json.loads(pathlib.Path("docs/contracts/sync-contract-v5.json").read_text())
+          plane_files = {
+              "A": pathlib.Path("streamify-modules/supabase/src/commonMain/kotlin/com/streamify/supabase/v5/PlaneAStateSyncClient.kt").read_text(),
+              "B": pathlib.Path("streamify-modules/supabase/src/commonMain/kotlin/com/streamify/supabase/v5/PlaneBEventClient.kt").read_text(),
+              "C": pathlib.Path("streamify-modules/supabase/src/commonMain/kotlin/com/streamify/supabase/v5/PlaneCPresenceClient.kt").read_text(),
+              "D": pathlib.Path("streamify-modules/supabase/src/commonMain/kotlin/com/streamify/supabase/v5/PlaneDCatalogClient.kt").read_text(),
+              "F": pathlib.Path("streamify-modules/supabase/src/commonMain/kotlin/com/streamify/supabase/v5/PlaneFCompanionClient.kt").read_text(),
+          }
+          missing = []
+          for rpc, spec in manifest["rpcs"].items():
+              plane = spec.get("plane")
+              if plane in plane_files:
+                  pattern = rf'executor\.invoke\(\s*"{re.escape(rpc)}"'
+                  if not re.search(pattern, plane_files[plane]):
+                      missing.append((plane, rpc))
+          assert not missing, f"Missing contract RPCs in KMP clients: {missing}"
+          print("Planes A-F KMP client RPC parity verified")
+          PY
+
+  v5-migration-replay-and-sql-tests:
+    name: v5 Migration Replay & SQL RPC Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: streamify_v5_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+          fetch-depth: 0
+
+      - name: Replay schema + v5 migrations + run v5 SQL tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          PG="psql -h 127.0.0.1 -p 5432 -U postgres -d streamify_v5_test -v ON_ERROR_STOP=1"
+          $PG -f supabase/sql/tests/00_test_shim.sql
+          $PG -c "CREATE SCHEMA IF NOT EXISTS cron; CREATE OR REPLACE FUNCTION cron.schedule(text, text, text) RETURNS BIGINT LANGUAGE sql AS \$\$SELECT 1::BIGINT\$\$; CREATE OR REPLACE FUNCTION cron.unschedule(text) RETURNS BOOLEAN LANGUAGE sql AS \$\$SELECT TRUE\$\$;"
+          $PG -f supabase/schema.sql
+          $PG -f supabase/sql/tests/01_grants.sql
+          for mig in \
+            supabase/migrations/2026_01_*.sql \
+            supabase/migrations/2026_11_drift_catchup.sql \
+            supabase/migrations/2026_11_sync_v2_unification.sql \
+            supabase/migrations/2026_11_sync_v3_user_graph.sql \
+            supabase/migrations/2026_11_sec10_rls_hardening.sql \
+            supabase/migrations/2026_11_p*.sql \
+            supabase/migrations/2026_11_ws_*.sql \
+            supabase/migrations/202612*.sql; do
+            echo "Applying $mig"
+            $PG -f "$mig"
+          done
+          $PG -f supabase/sql/tests/02_migration_chain_replay.sql
+          $PG -f supabase/sql/tests/03_sync_v5_rpc_tests.sql

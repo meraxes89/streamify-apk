@@ -54,6 +54,8 @@ def parse_checksums(sums_path: Path) -> dict[str, str]:
 
 def determine_channel(tag: str) -> str:
     clean = tag.lower()
+    if clean == "nightly" or "nightly" in clean:
+        return "nightly"
     if "beta" in clean:
         return "beta"
     if "rc" in clean:
@@ -97,7 +99,7 @@ def build_manifest(
                 artifacts["android-armeabi-v7a"] = {"url": url, "sha256": sha}
             elif "x86_64" in filename.lower():
                 artifacts["android-x86_64"] = {"url": url, "sha256": sha}
-            elif "universal" in filename.lower() or (filename.startswith("Streamify-v") and not any(k in filename for k in ["arm64", "armeabi", "x86_64", "vivo"])):
+            elif "universal" in filename.lower() or (filename.startswith("Streamify-") and not any(k in filename for k in ["arm64", "armeabi", "x86_64", "vivo"])):
                 artifacts["android-universal"] = {"url": url, "sha256": sha}
                 artifacts["android"] = {"url": url, "sha256": sha}
         elif filename.endswith(".msi") or filename.endswith(".exe"):
@@ -144,6 +146,7 @@ def build_manifest(
         "publishedAt": published_at,
         "changelog": changelog,
         "artifacts": artifacts,
+        "signatureHex": "",
     }
 
 

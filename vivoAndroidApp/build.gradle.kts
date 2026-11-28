@@ -28,7 +28,7 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.spotify.music"
+        applicationId = "com.soundcloud.android"
         minSdk = 26
         targetSdk = 36
         versionCode =
@@ -187,6 +187,7 @@ dependencies {
     val debugImplementation = "debugImplementation"
     debugImplementation(libs.ui.tooling)
     implementation(libs.activity.compose)
+    implementation(libs.core.splashscreen)
     implementation(libs.customactivityoncrash)
     implementation(libs.easypermissions)
     implementation(libs.legacy.support.v4)

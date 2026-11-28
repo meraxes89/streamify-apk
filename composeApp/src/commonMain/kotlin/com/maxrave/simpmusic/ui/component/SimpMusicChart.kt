@@ -57,7 +57,7 @@ fun SimpMusicChartButton(
 
             // Text
             Text(
-                text = "Introducing SimpMusic Chart",
+                text = "Introducing Streamify Chart",
                 fontSize = 13.sp,
                 color = labelColor,
                 fontWeight = FontWeight.Normal

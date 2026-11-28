@@ -100,3 +100,7 @@ server/public-feishin/
 # Internal reviews & scratch
 docs/nano/
 nano/
+
+# Local secrets / tokens (never commit)
+.env.local
+.env.*.local

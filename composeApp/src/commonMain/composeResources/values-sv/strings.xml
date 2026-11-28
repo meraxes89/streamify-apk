@@ -611,6 +611,8 @@
     <string name="update_channel">Uppdateringskanal</string>
     <string name="enable_liquid_glass_effect">Aktivera Liquid Glass (BETA)</string>
     <string name="enable_liquid_glass_effect_description">Aktivera iOS-effekten Liquid Glass på vissa ställen (Android 13+)</string>
+    <string name="enable_spatial_navigation">Rumslig navigation (BETA)</string>
+    <string name="enable_spatial_navigation_description">Aktivera delade elementövergångar, förutsägande tillbaka och delad axelrörelse i hela appen</string>
     <string name="your_library">Ditt bibliotek</string>
     <string name="play_explicit_content">Spela upp explicit innehåll</string>
     <string name="play_explicit_content_description">Aktivera uppspelning av explicit innehåll</string>
@@ -716,7 +718,7 @@
     <string name="local_tracking_description">Spara din lyssningshistorik i den lokala databasen</string>
     <string name="blog_notification_title">Aviseringar om blogginlägg</string>
     <string name="blog_notification_description">Få en avisering när ett nytt blogginlägg publiceras</string>
-    <string name="simpmusic_charts">SimpMusic-topplistor</string>
+    <string name="simpmusic_charts">Streamify-topplistor</string>
     <string name="crossfading">Övertoning</string>
     <string name="your_320kbps_url">Din webbadress för 320 kbit/s</string>
     <string name="your_320kbps_url_description">Lämna tomt för att automatiskt välja en fungerande webbadress med hjälp av drifttidskontrollen.</string>

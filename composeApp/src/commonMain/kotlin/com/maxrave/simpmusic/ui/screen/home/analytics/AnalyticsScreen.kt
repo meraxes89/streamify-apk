@@ -191,7 +191,7 @@ fun AnalyticsScreen(
     // this year's own figures to say what is waiting, so there is no cheaper question to ask —
     // and the banner must be absent, not empty, when the year is too thin to fill a reel.
     val wrappedState by wrappedViewModel.uiState.collectAsStateWithLifecycle()
-    val playingTrack by sharedViewModel.nowPlayingState.map { it?.track?.videoId }.collectAsState(null)
+    val playingTrack by sharedViewModel.nowPlayingState.map { it?.track?.videoId }.collectAsStateWithLifecycle(null)
 
     // Which header is used depends on the window's aspect ratio alone, exactly as on Album and
     // Playlist: a portrait window gets the edge-to-edge artwork header, a landscape one gets the

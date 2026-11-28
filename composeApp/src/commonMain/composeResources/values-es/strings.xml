@@ -580,6 +580,8 @@
     <string name="update_channel">Actualizar canal</string>
     <string name="enable_liquid_glass_effect">Habilitar efecto de vidrio líquido (BETA)</string>
     <string name="enable_liquid_glass_effect_description">Activa el efecto de vidrio líquido de iOS en algunas posiciones (Android 13+)</string>
+    <string name="enable_spatial_navigation">Navegación espacial (BETA)</string>
+    <string name="enable_spatial_navigation_description">Activa transiciones de elementos compartidos, atrás predictivo y movimiento de eje compartido en toda la app</string>
     <string name="your_library">Mi biblioteca</string>
     <string name="play_explicit_content">Reproducir contenido explícito</string>
     <string name="play_explicit_content_description">Habilitar la reproducción de contenido explícito</string>
@@ -667,7 +669,7 @@
     <string name="local_tracking_description">Registra tu historial de escucha en la base de datos local</string>
     <string name="blog_notification_title">Notificaciones de publicaciones del blog</string>
     <string name="blog_notification_description">Recibe una notificación cuando se publique una nueva entrada del blog</string>
-    <string name="simpmusic_charts">Gráficos SimpMusic</string>
+    <string name="simpmusic_charts">Gráficos Streamify</string>
     <string name="crossfading">Crossfade</string>
     <string name="your_320kbps_url">Su URL de 320kbps</string>
     <string name="your_320kbps_url_description">Dejar en blanco para elegir automáticamente una URL funcional desde la comprobación de tiempo de activación.</string>

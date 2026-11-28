@@ -51,7 +51,10 @@ class StreamifySyncEngineP0Test {
         assertEquals("history", op["entity"]?.jsonPrimitive?.content)
         assertEquals("I", op["op"]?.jsonPrimitive?.content)
         assertEquals("play_sync_123", op["key"]?.jsonPrimitive?.content)
-        assertEquals("1700000000000", op["hlc"]?.jsonPrimitive?.content)
+        assertEquals(
+            HybridLogicalClock.pack(1_700_000_000_000L, 0).toString(),
+            op["hlc"]?.jsonPrimitive?.content,
+        )
 
         val data = op["data"]!!.jsonObject
         assertEquals("play_sync_123", data["client_event_id"]?.jsonPrimitive?.content)
@@ -191,5 +194,223 @@ class StreamifySyncEngineP0Test {
         }
         assertEquals("11111111-2222-4333-8444-555555555555", reused)
         assertEquals(2, persisted.size)
+    }
+
+    @Test
+    fun normalizeTrackThumbUrlUpgradesHttpAndFallsBackToHqDefault() {
+        assertEquals(
+            "https://i.ytimg.com/vi/abc123/maxresdefault.jpg",
+            StreamifySyncEngine.normalizeTrackThumbUrl("http://i.ytimg.com/vi/abc123/maxresdefault.jpg", "abc123"),
+        )
+        assertEquals(
+            "https://i.ytimg.com/vi/abc123/hqdefault.jpg",
+            StreamifySyncEngine.normalizeTrackThumbUrl("", "abc123"),
+        )
+        assertEquals(
+            "https://i.ytimg.com/vi/abc123/hqdefault.jpg",
+            StreamifySyncEngine.normalizeTrackThumbUrl(null, "abc123"),
+        )
+        assertEquals(
+            null,
+            StreamifySyncEngine.normalizeTrackThumbUrl(null, "trk_legacy_1"),
+        )
+    }
+
+    @Test
+    fun buildHydratedSongEntityPrefersCatalogOrInlineMetadataOverPlaceholder() {
+        val cloudTrack = com.streamify.supabase.CloudTrack(
+            id = "a4O-abCXsfA",
+            title = "Timeless",
+            artist = "The Weeknd, Playboi Carti",
+            album = "Hurry Up Tomorrow",
+            durationSec = 256,
+            coverUrl = "http://i.ytimg.com/vi/a4O-abCXsfA/maxresdefault.jpg",
+        )
+        val placeholderMeta = kotlinx.serialization.json.buildJsonObject {
+            put("title", kotlinx.serialization.json.JsonPrimitive("Synced Track"))
+        }
+        val entity = StreamifySyncEngine.buildHydratedSongEntity(
+            videoId = "a4O-abCXsfA",
+            cloudTrack = cloudTrack,
+            inlineMeta = placeholderMeta,
+            likeStatus = "INDIFFERENT",
+            liked = false,
+        )
+        assertEquals("Timeless", entity.title)
+        assertEquals(listOf("The Weeknd, Playboi Carti"), entity.artistName)
+        assertEquals("Hurry Up Tomorrow", entity.albumName)
+        assertEquals("4:16", entity.duration)
+        assertEquals(256, entity.durationSeconds)
+        assertEquals("https://i.ytimg.com/vi/a4O-abCXsfA/maxresdefault.jpg", entity.thumbnails)
+    }
+
+    @Test
+    fun collectMissingTrackIdsForDeltaOpsSkipsDeletesAndCompleteLikes() {
+        val completeLikeData = kotlinx.serialization.json.buildJsonObject {
+            put("snapshot", kotlinx.serialization.json.buildJsonObject {
+                put("title", kotlinx.serialization.json.JsonPrimitive("Love Me"))
+                put("cover_url", kotlinx.serialization.json.JsonPrimitive("https://example.com/cover.jpg"))
+            })
+        }
+        val ops = listOf(
+            com.streamify.supabase.SyncPullOp(seq = 1L, entity = "like", op = "I", key = "vid_complete", data = completeLikeData),
+            com.streamify.supabase.SyncPullOp(seq = 2L, entity = "like", op = "I", key = "vid_no_snap", data = null),
+            com.streamify.supabase.SyncPullOp(seq = 3L, entity = "library_track", op = "U", key = "vid_lib", data = null),
+            com.streamify.supabase.SyncPullOp(seq = 4L, entity = "library_track", op = "D", key = "vid_deleted", data = null),
+            com.streamify.supabase.SyncPullOp(
+                seq = 5L,
+                entity = "playlist_track",
+                op = "I",
+                key = "row_1",
+                data = kotlinx.serialization.json.buildJsonObject {
+                    put("track_id", kotlinx.serialization.json.JsonPrimitive("vid_pl"))
+                },
+            ),
+        )
+        assertEquals(listOf("vid_no_snap", "vid_lib", "vid_pl"), StreamifySyncEngine.collectMissingTrackIdsForDeltaOps(ops))
+    }
+
+    @Test
+    fun nextOutboxMillisIsStrictlyMonotonicInEpochMsDomain() {
+        val t1 = StreamifySyncEngine.nextOutboxMillis(1_800_000_000_000L)
+        val t2 = StreamifySyncEngine.nextOutboxMillis(1_800_000_000_000L)
+        assertTrue(t2 > t1)
+        assertTrue(t2 < 100_000_000_000_000L)
+    }
+
+    @Test
+    fun normalizeToEpochMsUnpacksHlcAndPreservesEpochMs() {
+        val epochMs = 1_700_000_000_000L
+        val packed = HybridLogicalClock.pack(epochMs, 42)
+        assertEquals(epochMs, StreamifySyncEngine.normalizeToEpochMs(epochMs))
+        assertEquals(epochMs, StreamifySyncEngine.normalizeToEpochMs(packed))
+    }
+
+    @Test
+    fun resolvePlaylistTrackIdsHandlesPayloadAndCompositeKeyFallback() {
+        val fromData = com.streamify.supabase.SyncPullOp(
+            seq = 1L,
+            entity = "playlist_track",
+            op = "D",
+            key = "row_uuid",
+            data = kotlinx.serialization.json.buildJsonObject {
+                put("playlist_id", kotlinx.serialization.json.JsonPrimitive("pl_1"))
+                put("track_id", kotlinx.serialization.json.JsonPrimitive("vid_1"))
+            },
+        )
+        assertEquals("pl_1" to "vid_1", StreamifySyncEngine.resolvePlaylistTrackIds(fromData))
+
+        val fromKey = com.streamify.supabase.SyncPullOp(
+            seq = 2L,
+            entity = "playlist_track",
+            op = "D",
+            key = "pl_2|vid_2",
+            data = null,
+        )
+        assertEquals("pl_2" to "vid_2", StreamifySyncEngine.resolvePlaylistTrackIds(fromKey))
+
+        val unresolvable = com.streamify.supabase.SyncPullOp(
+            seq = 3L,
+            entity = "playlist_track",
+            op = "D",
+            key = "row_uuid_only",
+            data = null,
+        )
+        assertEquals(null, StreamifySyncEngine.resolvePlaylistTrackIds(unresolvable))
+    }
+
+    @Test
+    fun partitionEchoedChangesSuppressesCycleEchoesButKeepsUnrelatedChanges() {
+        val echoChange = SyncChangeEntity(
+            changeId = "chg_echo",
+            entity = SyncKind.SONG_LIKE,
+            entityKey = "vid_1",
+            op = SyncOp.SET,
+            value = "1",
+            changedAt = 1_700_000_005_000L,
+            deviceId = "dev_1",
+        )
+        val outsideWindowChange = SyncChangeEntity(
+            changeId = "chg_later",
+            entity = SyncKind.SONG_LIKE,
+            entityKey = "vid_1",
+            op = SyncOp.SET,
+            value = "0",
+            changedAt = 1_700_000_020_000L,
+            deviceId = "dev_1",
+        )
+        val unrelatedChange = SyncChangeEntity(
+            changeId = "chg_other",
+            entity = SyncKind.ARTIST_FOLLOW,
+            entityKey = "UC_1",
+            op = SyncOp.SET,
+            value = "1",
+            changedAt = 1_700_000_005_000L,
+            deviceId = "dev_1",
+        )
+
+        val (kept, echoedIds) = StreamifySyncEngine.partitionEchoedChanges(
+            pending = listOf(echoChange, outsideWindowChange, unrelatedChange),
+            echoedKeys = setOf("like" to "vid_1"),
+            windowStartMs = 1_700_000_000_000L,
+            windowEndMs = 1_700_000_010_000L,
+        )
+
+        assertEquals(listOf("chg_echo"), echoedIds)
+        assertEquals(listOf("chg_later", "chg_other"), kept.map { it.changeId })
+    }
+
+    @Test
+    fun hybridLogicalClockRestoreAndBackwardSkewClamp() {
+        HybridLogicalClock.resetForTesting()
+        val futurePhysical = 1_900_000_000_000L
+        val restored = HybridLogicalClock.pack(futurePhysical, 7)
+        HybridLogicalClock.restore(restored)
+
+        // Even if physical clock is behind restored floor, now() stays >= restored
+        val generated = HybridLogicalClock.now(physicalMillis = 1_700_000_000_000L)
+        assertTrue(generated > restored)
+
+        // Backward skew > MAX_SKEW_MS is clamped to serverTime - MAX_SKEW_MS
+        HybridLogicalClock.resetForTesting()
+        val serverTime = 1_800_000_000_000L
+        HybridLogicalClock.updateServerTime(serverTime)
+        val skewedPast = serverTime - (HybridLogicalClock.MAX_SKEW_MS + 600_000L)
+        val clamped = HybridLogicalClock.now(physicalMillis = skewedPast)
+        assertEquals(serverTime - HybridLogicalClock.MAX_SKEW_MS, HybridLogicalClock.unpackPhysical(clamped))
+    }
+
+    @Test
+    fun remoteSettingEchoSuppressionHandlesAsyncCollectorArrival() {
+        StreamifySyncEngine.markRemoteSettingWrite("theme_mode", "dark")
+        // First collector emission matching remote write is suppressed even after flag resets
+        assertTrue(StreamifySyncEngine.shouldSuppressRemoteSettingEcho("theme_mode", "dark"))
+        // Subsequent user change to a different value is NOT suppressed
+        assertFalse(StreamifySyncEngine.shouldSuppressRemoteSettingEcho("theme_mode", "light"))
+
+        StreamifySyncEngine.markRemoteSettingWrite("crossfade_ms", "3000")
+        // User changed value before async collector processed remote value -> not suppressed
+        assertFalse(StreamifySyncEngine.shouldSuppressRemoteSettingEcho("crossfade_ms", "5000"))
+    }
+
+    @Test
+    fun buildHistoryOutboxOpUnpacksLegacyPackedHlcForListenedAt() {
+        val epochMs = 1_700_000_000_000L
+        val packedHlc = HybridLogicalClock.pack(epochMs, 5)
+        val change = SyncChangeEntity(
+            changeId = "chg_packed",
+            entity = SyncKind.HISTORY,
+            entityKey = "evt_packed",
+            op = SyncOp.ADD,
+            value = null,
+            changedAt = packedHlc,
+            deviceId = "dev_1",
+        )
+        val op = StreamifySyncEngine.buildHistoryOutboxOp(change = change, event = null, song = null)
+        assertEquals(packedHlc.toString(), op["hlc"]?.jsonPrimitive?.content)
+        assertEquals(
+            Instant.fromEpochMilliseconds(epochMs).toString(),
+            op["data"]!!.jsonObject["listened_at"]?.jsonPrimitive?.content,
+        )
     }
 }

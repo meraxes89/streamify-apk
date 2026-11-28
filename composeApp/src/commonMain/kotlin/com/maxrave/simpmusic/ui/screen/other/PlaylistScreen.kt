@@ -90,6 +90,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
+import com.maxrave.simpmusic.ui.navigation.SharedKeys
+import com.maxrave.simpmusic.ui.navigation.sharedHero
 import coil3.compose.LocalPlatformContext
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
@@ -443,7 +445,10 @@ fun PlaylistScreen(
                                                         onSuccess = {
                                                             bitmap = it.result.image.toImageBitmap()
                                                         },
-                                                        modifier = Modifier.fillMaxSize(),
+                                                        modifier =
+                                                            Modifier
+                                                                .fillMaxSize()
+                                                                .sharedHero(SharedKeys.hero(SharedKeys.Origin.PLAYLIST, playlistId)),
                                                     )
                                                     // Scrim spans 70% of the artwork (not a fixed 200dp): the
                                                     // shorter the ramp, the steeper the alpha, and a steep ramp

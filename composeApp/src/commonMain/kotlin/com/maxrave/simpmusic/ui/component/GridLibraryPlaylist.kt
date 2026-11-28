@@ -150,8 +150,7 @@ internal inline fun <reified T> GridLibraryPlaylist(
     noinline createNewPlaylist: (() -> Unit)? = null,
     noinline onReload: () -> Unit,
 ) {
-    Logger.w("GridLibraryPlaylist", "Generic Type: ${T::class.simpleName}")
-    val isScrollingUp by state.isScrollingUp()
+    val isScrollingUp = state.isScrollingUp()
 
     var isGridView by rememberSaveable { mutableStateOf(true) }
     var sortOption by rememberSaveable { mutableStateOf(LibrarySortOption.DEFAULT) }
@@ -162,7 +161,7 @@ internal inline fun <reified T> GridLibraryPlaylist(
                 if (it <= 1) {
                     onScrolling.invoke(true)
                 } else {
-                    onScrolling.invoke(isScrollingUp)
+                    onScrolling.invoke(isScrollingUp.value)
                 }
             }
     }

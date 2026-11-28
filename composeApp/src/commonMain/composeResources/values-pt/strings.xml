@@ -492,6 +492,8 @@
     <string name="update_channel">Canal De Atualizações</string>
     <string name="enable_liquid_glass_effect">Enable liquid glass (BETA)</string>
     <string name="enable_liquid_glass_effect_description">Ativar o efeito de vidro líquido do iOS em alguma posição (Android 13+)</string>
+    <string name="enable_spatial_navigation">Navegação espacial (BETA)</string>
+    <string name="enable_spatial_navigation_description">Ativa transições de elementos compartilhados, volta preditiva e movimento de eixo compartilhado no app todo</string>
     <string name="your_library">Your library</string>
     <string name="play_explicit_content">Play explicit content</string>
     <string name="play_explicit_content_description">Enable to play explicit content</string>
@@ -539,7 +541,7 @@
     <string name="quit_app">Sair do app</string>
     <string name="local_tracking_title">Histórico de reprodução local</string>
     <string name="local_tracking_description">Registrar seu histórico de reprodução no banco de dados local</string>
-    <string name="simpmusic_charts">Paradas SimpMusic</string>
+    <string name="simpmusic_charts">Paradas Streamify</string>
     <string name="crossfading">Crossfading</string>
     <string name="your_320kbps_url">Sua URL de 320kbps</string>
     <string name="your_320kbps_url_description">Deixe vazio para escolher automaticamente uma URL de trabalho do verificador.</string>

@@ -608,6 +608,8 @@
     <string name="update_channel">Kênh cập nhật</string>
     <string name="enable_liquid_glass_effect">Bật liquid glass (BETA)</string>
     <string name="enable_liquid_glass_effect_description">Bật thiết kế Liquid glass trong một số vị trí (Android 13+)</string>
+    <string name="enable_spatial_navigation">Điều hướng không gian (BETA)</string>
+    <string name="enable_spatial_navigation_description">Bật hiệu ứng chuyển phần tử dùng chung, thao tác quay lại dự đoán và chuyển động trục dùng chung trên toàn ứng dụng</string>
     <string name="your_library">Thư viện của bạn</string>
     <string name="play_explicit_content">Phát bài hát chứa nội dung nhạy cảm</string>
     <string name="play_explicit_content_description">Bật để phát cả những bài hát nhạy cảm</string>
@@ -713,7 +715,7 @@
     <string name="local_tracking_description">Ghi lại lịch sử nghe nhạc vào cơ sở dữ liệu cục bộ</string>
     <string name="blog_notification_title">Thông báo về các bài blog mới</string>
     <string name="blog_notification_description">Nhận thông báo khi có bài blog mới được phát hành</string>
-    <string name="simpmusic_charts">SimpMusic Charts</string>
+    <string name="simpmusic_charts">Streamify Charts</string>
     <string name="crossfading">Đang chuyển bài mượt mà</string>
     <string name="your_320kbps_url">Đường dẫn link 320kbps của bạn</string>
     <string name="your_320kbps_url_description">Để trống để tự động chọn một URL hoạt động từ hệ thống kiểm tra.</string>

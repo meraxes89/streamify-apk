@@ -32,6 +32,11 @@ tests: []
 
 - Spec: [MULTIPLATFORM_PLAN_27_10.MD](../architecture/MULTIPLATFORM_PLAN_27_10.MD)
 
+## Current truth additions (RFC-003, #355)
+
+- The shared Compose UI now derives navigation transitions per destination from the `ScreenPolicyRegistry` (`composeApp/.../ui/navigation/ScreenPolicy.kt`), and shell chrome (bottom bar / rail / mini player) reactively from `currentBackStackEntryAsState()` — the imperative `hideNavBar`/`showNavBar` callbacks are gone. All of it is behind the `enableSpatialNavigation` beta toggle (Settings → Appearance), off by default; the single `NavHost` tree is never swapped when the flag flips, so the back stack survives toggling.
+- Predictive back runs through `PlatformPredictiveBackHandler` (expect/actual in `composeApp`), with overlays settling linearly on release; hero morphing (`Modifier.sharedHero`) is gated for Tier 4 software rasterizers and reduced motion.
+
 ## Known limits / debt
 
 - Desktop device hotplug/sleep handling has known gaps in the Phase-1 audit (historical).
@@ -40,4 +45,4 @@ tests: []
 
 - Add a single runbook for installer troubleshooting.
 
-<!-- doc-verified-against: dd58e0b3b60e16bed71200d58c9b204431562349 -->
+<!-- doc-verified-against: 7ee638426aa9f0594a5f0e960ca53cb39ab1220f -->

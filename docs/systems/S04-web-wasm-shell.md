@@ -22,7 +22,9 @@ tests: []
 
 ## Current truth
 
-- wasmJs browser target is configured in `composeApp/build.gradle.kts`; local DB is intentionally stubbed.
+- wasmJs browser target is configured in `composeApp/build.gradle.kts`; it is a **browser/demo target** where `:data` is substituted with `:room-wasm-stub` (`WebKoin.kt` + `DemoCatalogLoader.kt`).
+- `room-wasm-stub`'s `UUID.randomUUID()` generates RFC 4122 v4 UUIDs, `isOnUnmeteredNetwork()` fails safe to `false`, and `WasmFakeSyncOutboxRepository` persists pending/rejected outbox state in `localStorage`.
+- `server/src/platform/bundle-gate.mjs` (`verifyMerkle`) fails closed when `.bundle.json` or `rootHash` is missing and verifies `manifest.rootHash` against the content-addressed directory name.
 
 ## Interfaces
 
@@ -32,6 +34,11 @@ tests: []
 
 - None recorded.
 
+## Current truth additions (RFC-003, #355)
+
+- The shared Compose UI now derives navigation transitions per destination from the `ScreenPolicyRegistry` (`composeApp/.../ui/navigation/ScreenPolicy.kt`), and shell chrome (bottom bar / rail / mini player) reactively from `currentBackStackEntryAsState()` — the imperative `hideNavBar`/`showNavBar` callbacks are gone. All of it is behind the `enableSpatialNavigation` beta toggle (Settings → Appearance), off by default; the single `NavHost` tree is never swapped when the flag flips, so the back stack survives toggling.
+- Predictive back runs through `PlatformPredictiveBackHandler` (expect/actual in `composeApp`), with overlays settling linearly on release; hero morphing (`Modifier.sharedHero`) is gated for Tier 4 software rasterizers and reduced motion.
+
 ## Known limits / debt
 
 - Audio DSP is not implemented in the browser target.
@@ -40,4 +47,4 @@ tests: []
 
 - State explicitly which features are browser-only no-ops.
 
-<!-- doc-verified-against: dd58e0b3b60e16bed71200d58c9b204431562349 -->
+<!-- doc-verified-against: 10f009ccdfbe820499ddeb50f2cf55426307747b -->

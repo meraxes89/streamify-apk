@@ -2,6 +2,8 @@ package com.maxrave.simpmusic
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
@@ -80,6 +82,9 @@ import com.maxrave.simpmusic.expect.openUrl
 import com.maxrave.simpmusic.expect.ui.BindNavigationBackHandler
 import com.maxrave.simpmusic.expect.ui.layerBackdrop
 import com.maxrave.simpmusic.expect.ui.rememberBackdrop
+import com.maxrave.simpmusic.expect.ui.rememberStartupPermissionRequester
+import com.maxrave.simpmusic.expect.ui.shouldPromptStartupPermissions
+import com.maxrave.simpmusic.expect.ui.shouldPromptUnknownSourcesPermission
 import com.maxrave.simpmusic.extension.copy
 import com.maxrave.simpmusic.ui.component.AppBottomNavigationBar
 import com.maxrave.simpmusic.ui.component.AppNavigationRail
@@ -104,6 +109,12 @@ import com.maxrave.simpmusic.ui.navigation.destination.list.ArtistDestination
 import com.maxrave.simpmusic.ui.navigation.destination.list.PlaylistDestination
 import com.maxrave.simpmusic.ui.navigation.destination.player.FullscreenDestination
 import com.maxrave.simpmusic.ui.navigation.destination.search.SearchDestination
+import com.maxrave.simpmusic.ui.navigation.DestinationClassIndex
+import com.maxrave.simpmusic.ui.navigation.ScreenPolicyRegistry
+import com.maxrave.simpmusic.ui.navigation.SpatialCapability
+import com.maxrave.simpmusic.ui.navigation.LocalSharedTransitionScope
+import com.maxrave.simpmusic.ui.navigation.SharedTransitionScopeHolder
+import com.maxrave.simpmusic.ui.navigation.TransitionKind
 import com.maxrave.simpmusic.ui.navigation.graph.AppNavigationGraph
 import com.maxrave.simpmusic.ui.screen.MiniPlayer
 import com.maxrave.simpmusic.expect.ui.rememberPlatformContext
@@ -157,6 +168,15 @@ import simpmusic.composeapp.generated.resources.update_message
 import simpmusic.composeapp.generated.resources.yes
 import kotlin.time.ExperimentalTime
 
+/**
+ * The destination class of the current entry, used ONLY for policy lookup. Null when
+ * the graph has not settled yet (splash) — the registry then answers the default.
+ */
+fun currentDestinationClass(entry: androidx.navigation.NavBackStackEntry?): kotlin.reflect.KClass<*>? {
+    val route = entry?.destination?.route ?: return null
+    return DestinationClassIndex.classFor(route)
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalTime::class, ExperimentalFoundationApi::class)
 @Composable
 fun App(
@@ -179,6 +199,15 @@ fun App(
     val showNotificationPermissionDialog by viewModel.showNotificationPermissionDialog.collectAsStateWithLifecycle()
 
     val isLiquidGlassEnabled by viewModel.getEnableLiquidGlass().collectAsStateWithLifecycle(DataStoreManager.FALSE)
+    // RFC-003 §3.1: the spatial navigation beta. One flag gates transitions, heroes and
+    // predictive back; the NavHost tree itself is never swapped (zero-breakage rollout).
+    val isSpatialNavigationEnabled by viewModel.getEnableSpatialNavigation().collectAsStateWithLifecycle(DataStoreManager.FALSE)
+    // Hero morphing additionally needs the capability gate: Tier 4 software rasterizers
+    // (RFC-001 §3) and reduced-motion settings get the flag's transitions but no morphs.
+    val heroesAllowed = SpatialCapability.heroesAllowed(
+        betaEnabled = isSpatialNavigationEnabled == TRUE,
+        reduceMotion = false,
+    )
     // Analytics only makes sense with local tracking on, so its tab follows that setting (enabled by default).
     val isLocalTrackingEnabled by viewModel.getLocalTrackingEnabled().collectAsStateWithLifecycle(DataStoreManager.TRUE)
     val showAnalyticsTab = isLocalTrackingEnabled != DataStoreManager.FALSE
@@ -218,13 +247,15 @@ fun App(
         mutableStateOf(false)
     }
 
-    var isNavBarVisible by rememberSaveable {
-        mutableStateOf(true)
-    }
+    // Reactive chrome (RFC-003 §3.2): the bar/rail visibility is DERIVED below from the
+    // current entry's ScreenPolicy, never set by screens, so a cancelled predictive back
+    // gesture cannot desync it.
 
     var shouldShowUpdateDialog by rememberSaveable {
         mutableStateOf(false)
     }
+
+    val autoInstallCountdownSeconds by viewModel.autoInstallCountdownSeconds.collectAsStateWithLifecycle()
 
     var hasSkippedUpdateDialog by rememberSaveable {
         mutableStateOf(false)
@@ -237,14 +268,67 @@ fun App(
     val streamifyAuthState by StreamifyAuthManager.authState.collectAsStateWithLifecycle()
     val isEntranceBlocking = isSplashVisible || streamifyAuthState is AuthState.Loading
 
+    val startupPermissionRequester = rememberStartupPermissionRequester()
+    var hasCheckedStartupPermissions by rememberSaveable {
+        mutableStateOf(false)
+    }
+    var showUnknownSourcesDialog by rememberSaveable {
+        mutableStateOf(false)
+    }
+    var hasCheckedUnknownSources by rememberSaveable {
+        mutableStateOf(false)
+    }
+    LaunchedEffect(isEntranceBlocking) {
+        if (shouldPromptStartupPermissions(
+                isEntranceBlocking = isEntranceBlocking,
+                hasAllPermissions = startupPermissionRequester.hasAllRequiredPermissions(),
+                doNotAskAgain = viewModel.getString("notification_permission_do_not_ask") == "true",
+                alreadyCheckedThisSession = hasCheckedStartupPermissions,
+            )
+        ) {
+            hasCheckedStartupPermissions = true
+            viewModel.showNotificationPermissionDialog()
+        } else if (!isEntranceBlocking) {
+            hasCheckedStartupPermissions = true
+        }
+    }
+    LaunchedEffect(
+        isEntranceBlocking,
+        showNotificationPermissionDialog,
+        showDesktopNotificationPermissionDialog,
+        shouldShowUpdateDialog,
+        autoInstallCountdownSeconds,
+    ) {
+        val otherDialogOpen =
+            showNotificationPermissionDialog ||
+                showDesktopNotificationPermissionDialog ||
+                shouldShowUpdateDialog ||
+                autoInstallCountdownSeconds != null
+        if (shouldPromptUnknownSourcesPermission(
+                isEntranceBlocking = isEntranceBlocking,
+                otherDialogOpen = otherDialogOpen,
+                needsPermission = startupPermissionRequester.needsUnknownSourcesPermission(),
+                doNotAskAgain = viewModel.getString("unknown_sources_permission_do_not_ask") == "true",
+                alreadyCheckedThisSession = hasCheckedUnknownSources,
+            )
+        ) {
+            hasCheckedUnknownSources = true
+            showUnknownSourcesDialog = true
+        } else if (!isEntranceBlocking && !otherDialogOpen) {
+            hasCheckedUnknownSources = true
+        }
+    }
+
     // Every dialog this file raises on its own, plus blocking entrance animations.
     // Child screens (HomeScreen) wait until none is up; see LocalAppDialogOpen.
     val appDialogOpen =
         isEntranceBlocking ||
             sleepTimerState.isDone ||
+            autoInstallCountdownSeconds != null ||
             shouldShowUpdateDialog ||
             showNotificationPermissionDialog ||
             showDesktopNotificationPermissionDialog ||
+            showUnknownSourcesDialog ||
             isShowNowPlaylistScreen
 
     // Set by the first press or wheel scroll anywhere in the app this launch, or by opening Now
@@ -266,16 +350,13 @@ fun App(
         if (data != null) {
             if (data.scheme == "streamify" && data.host == "callback") {
                 // Supabase web OAuth callback (e.g. Google Sign-In fallback on Vivo or non-GMS devices):
-                // streamify://callback#access_token=...&refresh_token=...
+                // Dispatch to StreamifyAuthManager's own SupervisorJob scope BEFORE clearing intent,
+                // because setIntent(null) recomposes LaunchedEffect(intent, ...) and would cancel
+                // an inline suspend handleAuthCallback() mid-exchange.
                 val uriString = data.toString()
                 Logger.d("MainActivity", "Streamify auth callback: $uriString")
                 viewModel.setIntent(null)
-                val result = StreamifyAuthManager.handleAuthCallback(uriString, platformContext)
-                if (result.isSuccess) {
-                    Logger.d("MainActivity", "Streamify auth callback success: ${result.getOrNull()?.email}")
-                } else {
-                    Logger.e("MainActivity", "Streamify auth callback error", result.exceptionOrNull())
-                }
+                StreamifyAuthManager.submitAuthCallback(uriString, platformContext)
             } else if (data.scheme == "wordbyword" && data.host == "lastfm-auth") {
                 // Last.fm sends the user back here after they approve access, carrying the request
                 // token: wordbyword://lastfm-auth?token=xxx. The callback is fixed on the API
@@ -498,6 +579,13 @@ fun App(
         }
     }
 
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(3_600_000L)
+            viewModel.checkForUpdate(force = false)
+        }
+    }
+
     LaunchedEffect(updateData) {
         val response = updateData ?: return@LaunchedEffect
         // An update is offered if UpdateResolver verified an update manifest (code/hash/revocation)
@@ -508,6 +596,13 @@ fun App(
     }
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
+    // The one place chrome is decided: the policy of the CURRENT destination. Sheets that
+    // live outside the NavHost (Now Playing) still suppress the bar through the existing
+    // isInFullscreen / isShowNowPlaylistScreen reads below.
+    val currentPolicy by remember {
+        derivedStateOf { ScreenPolicyRegistry.policyFor(currentDestinationClass(navBackStackEntry)) }
+    }
+    val isNavBarVisible = currentPolicy.chrome.showNavBar && !isShowNowPlaylistScreen
     LaunchedEffect(navBackStackEntry) {
         Logger.d("MainActivity", "Current destination: ${navBackStackEntry?.destination?.route}")
         if (navBackStackEntry?.destination?.hierarchy?.any {
@@ -580,9 +675,32 @@ fun App(
             com.maxrave.simpmusic.data.RemoteGreetingManager.syncRemoteConfig()
         }
         LaunchedEffect(streamifyAuthState) {
-            if (streamifyAuthState is AuthState.Authenticated) {
-                val user = (streamifyAuthState as AuthState.Authenticated).user
-                com.streamify.sync.StreamifySyncEngine.triggerSync(user.id)
+            val v5Coordinator = org.koin.mp.KoinPlatform.getKoin().getOrNull<com.streamify.sync.v5.SyncCoordinator>()
+            when (val auth = streamifyAuthState) {
+                is AuthState.Authenticated -> {
+                    com.streamify.sync.StreamifySyncEngine.onAuthenticatedUser(auth.user.id)
+                    com.streamify.sync.StreamifySyncEngine.triggerSync(auth.user.id)
+                    if (v5Coordinator != null) {
+                        val info = com.streamify.supabase.resolvePlatformDeviceInfo()
+                        val deviceId = com.streamify.sync.StreamifySyncEngine.getOrCreateDeviceId()
+                        v5Coordinator.onAccountAuthenticated(
+                            userId = auth.user.id,
+                            deviceMeta = com.streamify.sync.v5.planec.DeviceMetadata(
+                                deviceId = deviceId,
+                                deviceName = info.deviceModel,
+                                platform = info.platform,
+                                appVersion = com.maxrave.simpmusic.BuildKonfig.versionName,
+                                versionCode = 0,
+                            ),
+                        )
+                        v5Coordinator.triggerPlaneASync(deviceId)
+                    }
+                }
+                is AuthState.Unauthenticated -> {
+                    com.streamify.sync.StreamifySyncEngine.resetForAccountSwitch()
+                    v5Coordinator?.onAccountSignedOut(com.streamify.sync.v5.SignOutReason.USER_SIGN_OUT)
+                }
+                else -> Unit
             }
         }
 
@@ -738,7 +856,7 @@ fun App(
                 ) {
                     val tabletMiniPlayer: @Composable (Modifier) -> Unit = { modifier ->
                         androidx.compose.animation.AnimatedVisibility(
-                            visible = isShowMiniPlayer && isTablet && !isInFullscreen,
+                            visible = isShowMiniPlayer && isTablet && currentPolicy.chrome.showMiniPlayer,
                             modifier = modifier,
                             enter = fadeIn() + slideInHorizontally(),
                             exit = fadeOut(),
@@ -813,7 +931,7 @@ fun App(
                                         },
                                     ),
                             ) {
-                                if (isTablet && !isInFullscreen) {
+                                if (isTablet && currentPolicy.chrome.showNavBar) {
                                     if (isDesktopShell) {
                                         DesktopSidebar(
                                             navController = navController,
@@ -867,27 +985,42 @@ fun App(
                                                 },
                                             ).hazeSource(hazeState),
                                     ) {
-                                        CompositionLocalProvider(
-                                            LocalAppDialogOpen provides appDialogOpen,
-                                            LocalNowPlayingOpen provides isShowNowPlaylistScreen,
-                                            LocalUserStarted provides userStarted,
-                                        ) {
-                                            AppNavigationGraph(
-                                                innerPadding = innerPadding,
-                                                navController = navController,
-                                                hideNavBar = {
-                                                    isNavBarVisible = false
-                                                },
-                                                showNavBar = {
-                                                    isNavBarVisible = true
-                                                },
-                                                showNowPlayingSheet = {
-                                                    isShowNowPlaylistScreen = true
-                                                },
-                                                onScrolling = {
-                                                    isScrolledToTop = it
-                                                },
-                                            )
+                                        @OptIn(ExperimentalSharedTransitionApi::class)
+                                        SharedTransitionLayout {
+                                            val sharedScope = this
+                                            val sharedScopeHolder = remember(sharedScope) {
+                                                object : SharedTransitionScopeHolder {
+                                                    @Composable
+                                                    override fun sharedElement(
+                                                        modifier: Modifier,
+                                                        key: Any,
+                                                        animatedVisibilityScope: androidx.compose.animation.AnimatedVisibilityScope,
+                                                    ): Modifier = with(sharedScope) {
+                                                        modifier.sharedElement(
+                                                            sharedContentState = rememberSharedContentState(key = key),
+                                                            animatedVisibilityScope = animatedVisibilityScope,
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                            CompositionLocalProvider(
+                                                LocalAppDialogOpen provides appDialogOpen,
+                                                LocalNowPlayingOpen provides isShowNowPlaylistScreen,
+                                                LocalUserStarted provides userStarted,
+                                                LocalSharedTransitionScope provides if (heroesAllowed) sharedScopeHolder else null,
+                                            ) {
+                                                AppNavigationGraph(
+                                                    innerPadding = innerPadding,
+                                                    navController = navController,
+                                                    spatialEnabled = isSpatialNavigationEnabled == TRUE,
+                                                    showNowPlayingSheet = {
+                                                        isShowNowPlaylistScreen = true
+                                                    },
+                                                    onScrolling = {
+                                                        isScrolledToTop = it
+                                                    },
+                                                )
+                                            }
                                         }
                                     }
                                     if (!isDesktopShell) {
@@ -1034,9 +1167,38 @@ fun App(
                                 )
                             },
                         )
+                    } else if (autoInstallCountdownSeconds != null) {
+                        val sec = autoInstallCountdownSeconds ?: 0
+                        val targetLabel = updateData?.tagName?.takeIf { it.isNotBlank() }?.let { " $it" }.orEmpty()
+                        AlertDialog(
+                            onDismissRequest = {
+                                if (sec > 0) viewModel.cancelPendingAutoInstall()
+                            },
+                            title = {
+                                Text(text = "Installing Streamify$targetLabel")
+                            },
+                            text = {
+                                Text(
+                                    text =
+                                        if (sec > 0) {
+                                            "Update verified. Installing in ${sec}s — the app will close briefly to apply the update."
+                                        } else {
+                                            "Installing verified update… Please wait."
+                                        },
+                                )
+                            },
+                            confirmButton = {
+                                if (sec > 0) {
+                                    TextButton(onClick = { viewModel.cancelPendingAutoInstall() }) {
+                                        Text(text = "Postpone")
+                                    }
+                                }
+                            },
+                        )
                     } else if (shouldShowUpdateDialog) {
                         val response = updateData ?: return@Scaffold
-                        val manifest = UpdateStateHolder.latestManifest
+                        val updatePolicyState by UpdateStateHolder.state.collectAsStateWithLifecycle()
+                        val manifest = updatePolicyState.latestManifest
                         val binary = remember(response.tagName) {
                             resolveDeviceBinary(
                                 tag = response.tagName,
@@ -1051,9 +1213,9 @@ fun App(
                             releaseDate = response.releaseTime,
                             changelog = response.body,
                             binary = binary,
-                            isBreaking = UpdateStateHolder.isBreaking,
-                            urgency = UpdateStateHolder.urgency,
-                            remainingHours = UpdateStateHolder.remainingHours,
+                            isBreaking = updatePolicyState.isBreaking,
+                            urgency = updatePolicyState.urgency,
+                            remainingHours = updatePolicyState.remainingHours,
                             downloadState = downloadState,
                             onRetryDownload = {
                                 val sha = manifest?.artifacts?.values?.firstOrNull { it.url == binary.downloadUrl }?.sha256.orEmpty()
@@ -1104,6 +1266,7 @@ fun App(
                                         onOpenDesktopNotificationSettings(doNotShowAgain)
                                     } else {
                                         viewModel.dismissNotificationPermissionDialog(doNotShowAgain)
+                                        startupPermissionRequester.requestMissingPermissions()
                                     }
                                 },
                             ) {
@@ -1119,19 +1282,14 @@ fun App(
                                 )
                             }
                         },
-                        dismissButton =
-                            if (showDesktopNotificationPermissionDialog) {
-                                {
-                                    TextButton(onClick = dismissPermissionDialog) {
-                                        Text(
-                                            stringResource(Res.string.cancel),
-                                            style = typo().bodySmall,
-                                        )
-                                    }
-                                }
-                            } else {
-                                null
-                            },
+                        dismissButton = {
+                            TextButton(onClick = dismissPermissionDialog) {
+                                Text(
+                                    stringResource(Res.string.cancel),
+                                    style = typo().bodySmall,
+                                )
+                            }
+                        },
                         title = {
                             Text(
                                 stringResource(Res.string.notification),
@@ -1142,6 +1300,77 @@ fun App(
                             Column {
                                 Text(
                                     stringResource(Res.string.this_app_needs_to_access_your_notification),
+                                    style = typo().bodySmall,
+                                )
+                                if (!showDesktopNotificationPermissionDialog) {
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(
+                                        "Also allows access to local audio files on your device for offline library playback.",
+                                        style = typo().bodySmall,
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier =
+                                        Modifier
+                                            .clickable { doNotShowAgain = !doNotShowAgain }
+                                            .fillMaxWidth(),
+                                ) {
+                                    Checkbox(
+                                        checked = doNotShowAgain,
+                                        onCheckedChange = { doNotShowAgain = it },
+                                    )
+                                    Spacer(modifier = Modifier.width(5.dp))
+                                    Text(
+                                        stringResource(Res.string.do_not_show_again),
+                                        style = typo().bodySmall,
+                                    )
+                                }
+                            }
+                        },
+                    )
+                } else if (showUnknownSourcesDialog) {
+                    var doNotShowAgain by remember { mutableStateOf(false) }
+                    val dismissUnknownSources = {
+                        showUnknownSourcesDialog = false
+                        if (doNotShowAgain) {
+                            viewModel.putString("unknown_sources_permission_do_not_ask", "true")
+                        }
+                    }
+                    AlertDialog(
+                        onDismissRequest = dismissUnknownSources,
+                        confirmButton = {
+                            TextButton(
+                                onClick = {
+                                    dismissUnknownSources()
+                                    startupPermissionRequester.requestUnknownSourcesPermission()
+                                },
+                            ) {
+                                Text(
+                                    stringResource(Res.string.settings),
+                                    style = typo().bodySmall,
+                                )
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = dismissUnknownSources) {
+                                Text(
+                                    stringResource(Res.string.cancel),
+                                    style = typo().bodySmall,
+                                )
+                            }
+                        },
+                        title = {
+                            Text(
+                                "Install app updates",
+                                style = typo().labelSmall,
+                            )
+                        },
+                        text = {
+                            Column {
+                                Text(
+                                    "Allow Streamify to install unknown apps so nightly builds and automatic updates can install directly.",
                                     style = typo().bodySmall,
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))

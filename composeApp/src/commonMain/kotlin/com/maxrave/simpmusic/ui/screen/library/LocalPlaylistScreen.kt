@@ -107,6 +107,8 @@ import androidx.paging.LoadState
 import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.collectAsLazyPagingItems
 import coil3.compose.AsyncImage
+import com.maxrave.simpmusic.ui.navigation.SharedKeys
+import com.maxrave.simpmusic.ui.navigation.sharedHero
 import coil3.compose.LocalPlatformContext
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
@@ -254,8 +256,8 @@ fun LocalPlaylistScreen(
             lazyState.firstVisibleItemIndex == 0
         }
     }
-    val downloadState by viewModel.uiState.map { it.downloadState }.collectAsState(
-        initial = DownloadState.STATE_NOT_DOWNLOADED,
+    val downloadState by viewModel.uiState.map { it.downloadState }.collectAsStateWithLifecycle(
+        initialValue = DownloadState.STATE_NOT_DOWNLOADED,
     )
     var shouldHideTopBar by rememberSaveable { mutableStateOf(false) }
     var shouldShowSuggestions by rememberSaveable { mutableStateOf(false) }
@@ -554,7 +556,10 @@ fun LocalPlaylistScreen(
                                         onSuccessBitmap = {
                                             bitmap = it
                                         },
-                                        modifier = Modifier.fillMaxSize(),
+                                        modifier =
+                                            Modifier
+                                                .fillMaxSize()
+                                                .sharedHero(SharedKeys.hero(SharedKeys.Origin.LOCAL_PLAYLIST, id.toString())),
                                     )
                                     // Scrim spans 70% of the artwork (not a fixed 200dp): the shorter the
                                     // ramp, the steeper the alpha, and a steep ramp is what makes the fade

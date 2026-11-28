@@ -2,16 +2,56 @@ package com.streamify.supabase
 
 import kotlinx.browser.sessionStorage
 import kotlinx.browser.window
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 actual object StreamifyAuthManager {
     private val _authState = MutableStateFlow<AuthState>(AuthState.Unauthenticated)
     actual val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
+    private val flowCoordinator = OAuthFlowCoordinator()
+    actual val isAuthenticating: StateFlow<Boolean> = flowCoordinator.isAuthenticating
+    actual val authError: StateFlow<String?> = flowCoordinator.authError
+
+    actual fun submitAuthCallback(callbackUri: String, context: Any?) {
+        flowCoordinator.submitCallback { handleAuthCallback(callbackUri, context) }
+    }
+
+    actual fun clearAuthError() = flowCoordinator.clearError()
+
     actual fun init(context: Any?) {
-        if (SupabaseClient.hasValidUserSession()) {
+        PlatformTokenStore.init(context)
+        val href = runCatching { window.location.href }.getOrNull().orEmpty()
+        val callbackData = AuthCallbackParser.parse(href)
+        if (callbackData.isSuccess || callbackData.isError) {
+            _authState.value = AuthState.Loading
+            CoroutineScope(Dispatchers.Default).launch {
+                val result = handleAuthCallback(href, context)
+                runCatching {
+                    val cleanUrl = "${window.location.origin}${window.location.pathname}"
+                    window.history.replaceState(null, "", cleanUrl)
+                }
+                if (result.isFailure) {
+                    _authState.value = AuthState.Unauthenticated
+                }
+            }
+            return
+        }
+
+        val restored = SupabaseClient.restorePersistedSession()
+        if (restored != null) {
+            _authState.value = AuthState.Authenticated(restored.user)
+            val refreshToken = restored.refreshToken
+            if (!refreshToken.isNullOrBlank()) {
+                CoroutineScope(Dispatchers.Default).launch {
+                    SupabaseClient.refreshSession(refreshToken)
+                }
+            }
+        } else if (SupabaseClient.hasValidUserSession()) {
             val user = SupabaseClient.currentUser.value ?: SupabaseConfig.DEFAULT_USER
             _authState.value = AuthState.Authenticated(user)
         } else {
@@ -21,25 +61,18 @@ actual object StreamifyAuthManager {
 
     actual suspend fun signInWithGoogle(context: Any?): Result<UserProfile> {
         return try {
-            val verifier = PkceCrypto.generateCodeVerifier()
-            val challenge = PkceCrypto.deriveCodeChallenge(verifier)
-            val state = PkceCrypto.generateState()
+            val session = OAuthPkceSession.createSession()
 
             val origin = window.location.origin
             val pathname = window.location.pathname
             val redirectUri = "$origin$pathname"
 
-            sessionStorage.setItem("pkce_code_verifier", verifier)
-            sessionStorage.setItem("pkce_state", state)
+            sessionStorage.setItem("pkce_code_verifier", session.verifier)
+            sessionStorage.setItem("pkce_state", session.state)
+            sessionStorage.setItem("pkce_timestamp", session.timestampMs.toString())
             sessionStorage.setItem("pkce_redirect_uri", redirectUri)
 
-            val authUrl = "${SupabaseConfig.SUPABASE_URL}/auth/v1/authorize?" +
-                    "provider=google" +
-                    "&redirect_to=${redirectUri}" +
-                    "&code_challenge=${challenge}" +
-                    "&code_challenge_method=S256" +
-                    "&state=${state}" +
-                    "&prompt=select_account"
+            val authUrl = OAuthPkceSession.buildAuthorizeUrl(redirectUri, session)
 
             window.location.href = authUrl
             Result.failure(Exception("Redirecting to Google Sign-In..."))
@@ -61,31 +94,36 @@ actual object StreamifyAuthManager {
                     ?: return Result.failure(Exception("No pending PKCE code verifier in web session"))
 
                 val expectedState = sessionStorage.getItem("pkce_state")
-                if (expectedState != null && data.state != null && data.state != expectedState) {
-                    return Result.failure(IllegalStateException("CSRF state mismatch"))
-                }
-
+                val timestamp = sessionStorage.getItem("pkce_timestamp")?.toLongOrNull() ?: 0L
                 val redirectUri = sessionStorage.getItem("pkce_redirect_uri")
                     ?: "${window.location.origin}${window.location.pathname}"
 
                 sessionStorage.removeItem("pkce_code_verifier")
                 sessionStorage.removeItem("pkce_state")
+                sessionStorage.removeItem("pkce_timestamp")
                 sessionStorage.removeItem("pkce_redirect_uri")
 
-                val result = SupabaseClient.exchangeCodeForSession(code, verifier, redirectUri)
+                val validation = OAuthPkceSession.validateCallback(
+                    callbackData = data,
+                    storedState = expectedState,
+                    storedVerifier = verifier,
+                    storedTimestampMs = timestamp
+                )
+
+                if (validation.isFailure) {
+                    return Result.failure(validation.exceptionOrNull() ?: IllegalStateException("Validation failed"))
+                }
+
+                val verifiedVerifier = validation.getOrThrow()
+                val result = SupabaseClient.exchangeCodeForSession(code, verifiedVerifier, redirectUri)
                 result.onSuccess { profile ->
                     _authState.value = AuthState.Authenticated(profile)
                 }
                 return result
             }
 
-            val accessToken = data.accessToken
-            if (!accessToken.isNullOrBlank()) {
-                val result = SupabaseClient.signInWithAccessToken(accessToken, data.refreshToken)
-                result.onSuccess { profile ->
-                    _authState.value = AuthState.Authenticated(profile)
-                }
-                return result
+            if (!data.accessToken.isNullOrBlank()) {
+                return Result.failure(IllegalStateException("Implicit access_token flow is disabled; PKCE code required"))
             }
 
             Result.failure(Exception("No authorization code or access token in callback URL"))
@@ -109,13 +147,18 @@ actual object StreamifyAuthManager {
             avatarUrl = "",
             isAdmin = false,
         )
+        PlatformTokenStore.clear()
         SupabaseClient.setSession(null, guest)
         _authState.value = AuthState.Authenticated(guest)
         return Result.success(guest)
     }
 
     actual fun signOut(context: Any?) {
+        val tokenToRevoke = SupabaseClient.accessToken.value
         _authState.value = AuthState.Unauthenticated
         SupabaseClient.clearSession()
+        CoroutineScope(Dispatchers.Default).launch {
+            SupabaseClient.signOutRemote(tokenToRevoke)
+        }
     }
 }

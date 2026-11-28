@@ -574,6 +574,8 @@
     <string name="update_channel">Update channel</string>
     <string name="enable_liquid_glass_effect">Omogući liquid glass (BETA)</string>
     <string name="enable_liquid_glass_effect_description">Omogući iOS's liquid glass effect in some position (Android 13+)</string>
+    <string name="enable_spatial_navigation">Prostorna navigacija (BETA)</string>
+    <string name="enable_spatial_navigation_description">Omogući prijelaze zajedničkih elemenata, prediktivni povratak i gibanje zajedničke osi u cijeloj aplikaciji</string>
     <string name="your_library">Your library</string>
     <string name="play_explicit_content">Play explicit content</string>
     <string name="play_explicit_content_description">Omogući to play explicit content</string>
@@ -679,7 +681,7 @@
     <string name="local_tracking_description">Log your listening history to local database</string>
     <string name="blog_notification_title">Blog post notifications</string>
     <string name="blog_notification_description">Get notified when a new blog post is published</string>
-    <string name="simpmusic_charts">SimpMusic Ljestvicas</string>
+    <string name="simpmusic_charts">Streamify Ljestvicas</string>
     <string name="crossfading">Crossfading</string>
     <string name="your_320kbps_url">Your 320kbps URL</string>
     <string name="your_320kbps_url_description">Leave empty to auto-choose a working URL from the uptime checker.</string>

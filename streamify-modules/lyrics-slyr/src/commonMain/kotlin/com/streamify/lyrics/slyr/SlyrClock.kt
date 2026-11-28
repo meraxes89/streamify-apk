@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlin.concurrent.Volatile
 import kotlin.time.TimeSource
 
 /**
@@ -26,9 +27,13 @@ class SlyrClock(
     private val _heardTimeMs = MutableStateFlow(0L)
     val heardTimeMs: StateFlow<Long> = _heardTimeMs.asStateFlow()
 
+    @Volatile
     private var rawPositionMs: Long = 0L
+    @Volatile
     private var userOffsetMs: Long = 0L
+    @Volatile
     private var isPlaying: Boolean = false
+    @Volatile
     private var lastTimeMark: TimeSource.Monotonic.ValueTimeMark? = null
 
     init {

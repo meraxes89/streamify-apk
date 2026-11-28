@@ -40,6 +40,9 @@ object SupabaseClient {
     private val _refreshToken = MutableStateFlow<String?>(null)
     val refreshToken: StateFlow<String?> = _refreshToken.asStateFlow()
 
+    private val _expiresAtEpochMs = MutableStateFlow(0L)
+    val expiresAtEpochMs: StateFlow<Long> = _expiresAtEpochMs.asStateFlow()
+
     val refreshCoordinator = AuthRefreshMutex()
 
     val httpClient: HttpClient by lazy {
@@ -73,18 +76,93 @@ object SupabaseClient {
     /**
      * Updates user session after server authentication.
      */
-    fun setSession(token: String?, profile: UserProfile?, refreshToken: String? = null) {
+    fun setSession(
+        token: String?,
+        profile: UserProfile?,
+        refreshToken: String? = null,
+        expiresAtEpochMs: Long = 0L,
+    ) {
         _accessToken.value = token
         _currentUser.value = profile ?: SupabaseConfig.DEFAULT_USER
-        if (refreshToken != null) {
-            _refreshToken.value = refreshToken
-        }
+        _refreshToken.value = refreshToken
+        _expiresAtEpochMs.value = expiresAtEpochMs
     }
 
     fun clearSession() {
         _accessToken.value = null
         _refreshToken.value = null
+        _expiresAtEpochMs.value = 0L
         _currentUser.value = SupabaseConfig.DEFAULT_USER
+        PlatformTokenStore.clear()
+    }
+
+    /**
+     * Best-effort remote session revocation via Supabase `/auth/v1/logout`.
+     */
+    suspend fun signOutRemote(token: String?) {
+        if (token.isNullOrBlank() || token == SupabaseConfig.ANON_KEY) return
+        withContext(ioDispatcher) {
+            try {
+                httpClient.post("${SupabaseConfig.SUPABASE_URL}/auth/v1/logout") {
+                    header("apikey", SupabaseConfig.ANON_KEY)
+                    header("Authorization", "Bearer $token")
+                }
+            } catch (_: Exception) {
+                // Best-effort revocation; local session is already cleared.
+            }
+        }
+    }
+
+    internal fun persistCurrentSession() {
+        val token = _accessToken.value ?: return
+        if (token.isBlank() || token == SupabaseConfig.ANON_KEY) return
+        val user = _currentUser.value ?: return
+        PlatformTokenStore.save(
+            StoredAuthSession(
+                user = user,
+                accessToken = token,
+                refreshToken = _refreshToken.value,
+                expiresAtEpochMs = _expiresAtEpochMs.value,
+            ),
+        )
+    }
+
+    internal fun restorePersistedSession(): StoredAuthSession? {
+        val stored = PlatformTokenStore.load() ?: return null
+        if (stored.accessToken.isBlank() || stored.accessToken == SupabaseConfig.ANON_KEY) return null
+        setSession(
+            token = stored.accessToken,
+            profile = stored.user,
+            refreshToken = stored.refreshToken,
+            expiresAtEpochMs = stored.expiresAtEpochMs,
+        )
+        return stored
+    }
+
+    /**
+     * Ensures the current access token is fresh, proactively refreshing via [AuthRefreshMutex]
+     * if [AuthRefreshMutex.isTokenExpired] indicates it is within the expiry buffer window.
+     */
+    suspend fun ensureValidAccessToken(): String {
+        val current = _accessToken.value
+        if (current.isNullOrBlank() || current == SupabaseConfig.ANON_KEY) {
+            return SupabaseConfig.ANON_KEY
+        }
+        val expiresAt = _expiresAtEpochMs.value
+        if (expiresAt > 0L && refreshCoordinator.isTokenExpired(expiresAt) && !_refreshToken.value.isNullOrBlank()) {
+            refreshSession()
+        }
+        return getAuthToken()
+    }
+
+    private fun parseExpiresAtEpochMs(rootObj: kotlinx.serialization.json.JsonObject): Long {
+        val expiresAtSec = rootObj["expires_at"]?.jsonPrimitive?.content?.toLongOrNull()
+        val expiresInSec = rootObj["expires_in"]?.jsonPrimitive?.content?.toLongOrNull() ?: 3600L
+        return if (expiresAtSec != null && expiresAtSec > 0L) {
+            expiresAtSec * 1000L
+        } else {
+            Clock.System.now().toEpochMilliseconds() + (expiresInSec * 1000L)
+        }
     }
 
     fun getAuthToken(): String {
@@ -137,6 +215,7 @@ object SupabaseClient {
                 if (!refreshTokenStr.isNullOrBlank()) {
                     _refreshToken.value = refreshTokenStr
                 }
+                _expiresAtEpochMs.value = parseExpiresAtEpochMs(rootObj)
                 val isAdminUser = fetchServerIsAdmin(userId)
 
                 val profile = UserProfile(
@@ -148,6 +227,7 @@ object SupabaseClient {
                 )
 
                 _currentUser.value = profile
+                persistCurrentSession()
                 ensureProfile(profile)
 
                 Result.success(profile)
@@ -200,6 +280,7 @@ object SupabaseClient {
                 )
 
                 setSession(token, profile, refreshToken?.takeIf { it.isNotBlank() })
+                persistCurrentSession()
                 ensureProfile(profile)
 
                 Result.success(profile)
@@ -238,16 +319,12 @@ object SupabaseClient {
                     val rootObj = jsonParser.parseToJsonElement(bodyText).jsonObject
                     val newAccessToken = rootObj["access_token"]?.jsonPrimitive?.content ?: ""
                     val newRefreshToken = rootObj["refresh_token"]?.jsonPrimitive?.content ?: tokenToUse
-                    val expiresAtSec = rootObj["expires_at"]?.jsonPrimitive?.content?.toLongOrNull()
-                    val expiresInSec = rootObj["expires_in"]?.jsonPrimitive?.content?.toLongOrNull() ?: 3600L
-                    val expiresAt = if (expiresAtSec != null && expiresAtSec > 0) {
-                        expiresAtSec * 1000L
-                    } else {
-                        Clock.System.now().toEpochMilliseconds() + (expiresInSec * 1000L)
-                    }
+                    val expiresAt = parseExpiresAtEpochMs(rootObj)
 
                     _accessToken.value = newAccessToken
                     _refreshToken.value = newRefreshToken
+                    _expiresAtEpochMs.value = expiresAt
+                    persistCurrentSession()
                     Result.success(TokenSession(newAccessToken, newRefreshToken, expiresAt))
                 } else {
                     Result.failure(Exception("Token refresh failed: $bodyText"))
@@ -261,25 +338,43 @@ object SupabaseClient {
 
     /**
      * Exchanges an OAuth PKCE authorization code for an authenticated user session
-     * via POST /auth/v1/token?grant_type=authorization_code.
+     * via POST /auth/v1/token?grant_type=pkce (with fallback to grant_type=authorization_code).
      */
     suspend fun exchangeCodeForSession(
         code: String,
         codeVerifier: String,
-        redirectUri: String
+        redirectUri: String? = null
     ): Result<UserProfile> = withContext(ioDispatcher) {
         try {
-            val url = "${SupabaseConfig.SUPABASE_URL}/auth/v1/token?grant_type=authorization_code"
-            val payload = buildJsonObject {
+            val pkceUrl = "${SupabaseConfig.SUPABASE_URL}/auth/v1/token?grant_type=pkce"
+            val pkcePayload = buildJsonObject {
                 put("auth_code", code)
                 put("code_verifier", codeVerifier)
-                put("redirect_uri", redirectUri)
             }.toString()
 
-            val response = httpClient.post(url) {
+            var response = httpClient.post(pkceUrl) {
                 header("apikey", SupabaseConfig.ANON_KEY)
                 contentType(ContentType.Application.Json)
-                setBody(payload)
+                setBody(pkcePayload)
+            }
+
+            // Fallback for GoTrue instances expecting grant_type=authorization_code
+            if (!response.status.isSuccess() && !redirectUri.isNullOrBlank()) {
+                val authCodeUrl = "${SupabaseConfig.SUPABASE_URL}/auth/v1/token?grant_type=authorization_code"
+                val authCodePayload = buildJsonObject {
+                    put("auth_code", code)
+                    put("code_verifier", codeVerifier)
+                    put("redirect_uri", redirectUri)
+                }.toString()
+
+                val fallbackResponse = httpClient.post(authCodeUrl) {
+                    header("apikey", SupabaseConfig.ANON_KEY)
+                    contentType(ContentType.Application.Json)
+                    setBody(authCodePayload)
+                }
+                if (fallbackResponse.status.isSuccess()) {
+                    response = fallbackResponse
+                }
             }
 
             val bodyText = response.bodyAsText()
@@ -303,6 +398,7 @@ object SupabaseClient {
                 if (!refreshTokenStr.isNullOrBlank()) {
                     _refreshToken.value = refreshTokenStr
                 }
+                _expiresAtEpochMs.value = parseExpiresAtEpochMs(rootObj)
                 val isAdminUser = fetchServerIsAdmin(userId)
 
                 val profile = UserProfile(
@@ -314,6 +410,7 @@ object SupabaseClient {
                 )
 
                 _currentUser.value = profile
+                persistCurrentSession()
                 ensureProfile(profile)
 
                 Result.success(profile)

@@ -83,22 +83,17 @@ fun LastfmLoginScreen(
     innerPadding: PaddingValues,
     navController: NavController,
     viewModel: LogInViewModel = koinViewModel(),
-    hideBottomNavigation: () -> Unit,
-    showBottomNavigation: () -> Unit,
 ) {
     val state by viewModel.lastfmState.collectAsStateWithLifecycle()
     val loggedIn by viewModel.lastfmLoggedIn.collectAsStateWithLifecycle()
     val uriHandler = LocalUriHandler.current
     var callbackInput by rememberSaveable { mutableStateOf("") }
 
-    LaunchedEffect(Unit) {
-        hideBottomNavigation()
-    }
-
+    // Bottom navigation is hidden while a login destination is current — derived by
+    // App.kt from this destination's ChromePolicy, never set from here (RFC-003 §3.2).
     DisposableEffect(Unit) {
         onDispose {
             viewModel.resetLastfmState()
-            showBottomNavigation()
         }
     }
 

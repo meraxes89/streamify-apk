@@ -24,7 +24,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -106,8 +105,6 @@ fun LoginScreen(
     navController: NavController,
     viewModel: LogInViewModel = koinViewModel(),
     settingsViewModel: SettingsViewModel = koinViewModel(),
-    hideBottomNavigation: () -> Unit,
-    showBottomNavigation: () -> Unit,
 ) {
     val hazeState = rememberHazeState()
     val coroutineScope = rememberCoroutineScope()
@@ -173,17 +170,8 @@ fun LoginScreen(
         }
     }
 
-    // Hide bottom navigation when entering this screen
-    LaunchedEffect(Unit) {
-        hideBottomNavigation()
-    }
-
-    // Show bottom navigation when leaving this screen
-    DisposableEffect(Unit) {
-        onDispose {
-            showBottomNavigation()
-        }
-    }
+    // Bottom navigation is hidden while a login destination is current — derived by
+    // App.kt from this destination's ChromePolicy, never set from here (RFC-003 §3.2).
 
     Box(modifier = Modifier.fillMaxSize().hazeSource(state = hazeState)) {
         Column(if (browserViewModel != null) Modifier.fillMaxSize() else Modifier) {

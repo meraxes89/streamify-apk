@@ -158,6 +158,60 @@ class SharedViewModel(
 
     private val appIdentity: AppIdentity by inject()
 
+    private val _autoInstallCountdownSeconds = MutableStateFlow<Int?>(null)
+    val autoInstallCountdownSeconds: StateFlow<Int?> = _autoInstallCountdownSeconds.asStateFlow()
+
+    fun cancelPendingAutoInstall() {
+        autoInstallJob?.cancel()
+        autoInstallJob = null
+        _autoInstallCountdownSeconds.value = null
+    }
+
+    private fun scheduleAutoInstallIfEnabled(
+        fallbackUrl: String,
+        hasVerifiedSha: Boolean,
+    ) {
+        if (!com.maxrave.simpmusic.data.update.UpdateStateHolder.autoInstallEnabled) return
+        if (!com.maxrave.simpmusic.data.update.PlatformUpdater.canAutoInstall()) return
+        if (!com.maxrave.simpmusic.data.update.UpdateStateHolder.isPolicyVerified && !hasVerifiedSha) return
+
+        autoInstallJob?.cancel()
+        autoInstallJob = viewModelScope.launch {
+            try {
+                val terminal = com.maxrave.simpmusic.data.update.PlatformUpdater.state.first { state ->
+                    state is com.maxrave.simpmusic.data.update.UpdateDownloadState.Ready ||
+                        state is com.maxrave.simpmusic.data.update.UpdateDownloadState.Error
+                }
+                if (terminal !is com.maxrave.simpmusic.data.update.UpdateDownloadState.Ready) return@launch
+                val initialMediaId =
+                    nowPlayingState.value?.let { it.mediaItem?.mediaId ?: it.songEntity?.videoId }
+                // Trigger silent install when playback pauses/stops OR when the player/user shifts to the next track.
+                combine(nowPlayingState, controllerState) { trackState, ctrlState ->
+                    val currentMediaId = trackState?.let { it.mediaItem?.mediaId ?: it.songEntity?.videoId }
+                    com.maxrave.simpmusic.data.update.shouldTriggerAutoInstall(
+                        initialMediaId = initialMediaId,
+                        currentMediaId = currentMediaId,
+                        isPlaying = ctrlState.isPlaying,
+                    )
+                }.first { it }
+                if (!com.maxrave.simpmusic.data.update.UpdateStateHolder.autoInstallEnabled) return@launch
+                for (sec in 3 downTo 1) {
+                    _autoInstallCountdownSeconds.value = sec
+                    kotlinx.coroutines.delay(1_000L)
+                    if (!com.maxrave.simpmusic.data.update.UpdateStateHolder.autoInstallEnabled) return@launch
+                }
+                _autoInstallCountdownSeconds.value = 0
+                com.maxrave.simpmusic.data.update.PlatformUpdater.installOrApply(
+                    onFallbackOpenUrl = {},
+                    fallbackUrl = fallbackUrl,
+                )
+                kotlinx.coroutines.delay(2_000L)
+            } finally {
+                _autoInstallCountdownSeconds.value = null
+            }
+        }
+    }
+
     private val _isCheckingUpdate = MutableStateFlow(false)
     val isCheckingUpdate: StateFlow<Boolean> = _isCheckingUpdate
 
@@ -452,6 +506,14 @@ class SharedViewModel(
                             ?: -1L
                     _timeline.update { it.copy(total = seededTotal) }
                     state.songEntity?.let { track ->
+                        com.streamify.sync.StreamifySyncEngine.onPlaybackTrackChanged(
+                            trackId = track.videoId,
+                            title = track.title,
+                            artistName = track.artistName?.joinToString(", ") ?: "",
+                            albumId = track.albumId ?: "",
+                            albumName = track.albumName ?: "",
+                            durationSec = track.durationSeconds,
+                        )
                         launch {
                             runCatching {
                                 com.streamify.supabase.SupabaseFriendSync.reportPlayback(
@@ -530,6 +592,7 @@ class SharedViewModel(
                             }
 
                             SimpleMediaState.Ended -> {
+                                com.streamify.sync.StreamifySyncEngine.flushActivePlaybackSession()
                                 // Park at the end of the track rather than at -1. The only formatter
                                 // for these fields renders any negative as "NA:NA", and nothing here
                                 // is guaranteed to follow: at the end of the queue the player simply
@@ -548,6 +611,18 @@ class SharedViewModel(
 
                             is SimpleMediaState.Progress -> {
                                 if (mediaState.progress >= 0L && mediaState.progress != _timeline.value.current) {
+                                    nowPlayingState.value?.songEntity?.let { activeTrack ->
+                                        if (controllerState.value.isPlaying) {
+                                            com.streamify.sync.StreamifySyncEngine.onPlaybackProgressTick(
+                                                trackId = activeTrack.videoId,
+                                                title = activeTrack.title,
+                                                artistName = activeTrack.artistName?.joinToString(", ") ?: "",
+                                                albumId = activeTrack.albumId ?: "",
+                                                albumName = activeTrack.albumName ?: "",
+                                                durationSec = activeTrack.durationSeconds,
+                                            )
+                                        }
+                                    }
                                     // A live stream never reports a length (ExoPlayer: C.TIME_UNSET), so
                                     // a missing one means "loading" for everything except a live stream.
                                     if (_timeline.value.total > 0L || _timeline.value.isLive) {
@@ -1043,6 +1118,16 @@ class SharedViewModel(
         index: Int? = null,
     ) {
         viewModelScope.launch {
+            if (type != RECOVER_TRACK_QUEUE &&
+                com.maxrave.simpmusic.data.update.UpdateStateHolder.isOnlineStreamingBlocked
+            ) {
+                val localSong = songRepository.getSongById(track.videoId).firstOrNull()
+                if (localSong?.downloadState != com.maxrave.domain.data.entities.DownloadState.STATE_DOWNLOADED) {
+                    log("Blocked online playback for ${track.videoId}: enforced signed update required", LogLevel.WARN)
+                    showedUpdateDialog = true
+                    return@launch
+                }
+            }
             mediaPlayerHandler.clearMediaItems()
             songRepository.insertSong(track.toSongEntity()).lastOrNull()?.let {
                 println("insertSong: $it")
@@ -1324,11 +1409,17 @@ class SharedViewModel(
     private var _updateResponse = MutableStateFlow<UpdateData?>(null)
     val updateResponse: StateFlow<UpdateData?> = _updateResponse
 
+    private var autoInstallJob: kotlinx.coroutines.Job? = null
+
     fun checkForUpdate(force: Boolean = false) {
         viewModelScope.launch {
             if (!force && dataStoreManager.autoCheckForUpdates.first() != TRUE) {
                 return@launch
             }
+            val nightlyPref = dataStoreManager.getString(com.maxrave.simpmusic.data.update.UpdatePreferences.KEY_NIGHTLY_ENABLED).first()
+            com.maxrave.simpmusic.data.update.UpdateStateHolder.nightlyEnabled = nightlyPref == TRUE
+            val autoInstallPref = dataStoreManager.getString(com.maxrave.simpmusic.data.update.UpdatePreferences.KEY_AUTO_INSTALL_ENABLED).first()
+            com.maxrave.simpmusic.data.update.UpdateStateHolder.autoInstallEnabled = autoInstallPref != FALSE
             // Raised before the coroutine starts, so Home's launch banner, which reads it right after
             // startup, can never miss a check that is already under way but not yet marked.
             _isCheckingUpdate.value = true
@@ -1355,10 +1446,16 @@ class SharedViewModel(
                             }
                             val graceHours = manifest?.graceHours ?: 48
                             val isBreaking = com.maxrave.simpmusic.data.update.UpdateStateHolder.isBreaking
-                            com.maxrave.simpmusic.data.update.UpdateStateHolder.urgency =
+                            val urgency =
                                 com.maxrave.simpmusic.data.update.computeUpdateUrgency(firstSeenAtMs, nowMs, graceHours, isBreaking)
-                            com.maxrave.simpmusic.data.update.UpdateStateHolder.remainingHours =
+                            val remainingHours =
                                 com.maxrave.simpmusic.data.update.remainingGraceHours(firstSeenAtMs, nowMs, graceHours)
+                            com.maxrave.simpmusic.data.update.UpdateStateHolder.update(
+                                com.maxrave.simpmusic.data.update.UpdateStateHolder.state.value.copy(
+                                    urgency = urgency,
+                                    remainingHours = remainingHours,
+                                ),
+                            )
 
                             // Network-bound background pre-fetch (resumable via HTTP Range)
                             val binary = com.maxrave.simpmusic.data.update.resolveDeviceBinary(
@@ -1370,6 +1467,10 @@ class SharedViewModel(
                                 tag = data.tagName,
                                 url = binary.downloadUrl,
                                 expectedSha256 = sha,
+                            )
+                            scheduleAutoInstallIfEnabled(
+                                fallbackUrl = binary.downloadUrl,
+                                hasVerifiedSha = sha.isNotBlank(),
                             )
 
                             _updateResponse.value = data
@@ -1400,10 +1501,16 @@ class SharedViewModel(
                             }
                             val graceHours = manifest?.graceHours ?: 48
                             val isBreaking = com.maxrave.simpmusic.data.update.UpdateStateHolder.isBreaking
-                            com.maxrave.simpmusic.data.update.UpdateStateHolder.urgency =
+                            val urgency =
                                 com.maxrave.simpmusic.data.update.computeUpdateUrgency(firstSeenAtMs, nowMs, graceHours, isBreaking)
-                            com.maxrave.simpmusic.data.update.UpdateStateHolder.remainingHours =
+                            val remainingHours =
                                 com.maxrave.simpmusic.data.update.remainingGraceHours(firstSeenAtMs, nowMs, graceHours)
+                            com.maxrave.simpmusic.data.update.UpdateStateHolder.update(
+                                com.maxrave.simpmusic.data.update.UpdateStateHolder.state.value.copy(
+                                    urgency = urgency,
+                                    remainingHours = remainingHours,
+                                ),
+                            )
 
                             // Network-bound background pre-fetch (resumable via HTTP Range)
                             val binary = com.maxrave.simpmusic.data.update.resolveDeviceBinary(
@@ -1415,6 +1522,10 @@ class SharedViewModel(
                                 tag = data.tagName,
                                 url = binary.downloadUrl,
                                 expectedSha256 = sha,
+                            )
+                            scheduleAutoInstallIfEnabled(
+                                fallbackUrl = binary.downloadUrl,
+                                hasVerifiedSha = sha.isNotBlank(),
                             )
 
                             _updateResponse.value = data
@@ -2221,6 +2332,10 @@ class SharedViewModel(
     }
 
     fun getEnableLiquidGlass() = dataStoreManager.enableLiquidGlass
+
+    // The RFC-003 spatial navigation beta: read by App.kt to gate transitions, shared elements
+    // and predictive back without ever swapping the NavHost tree.
+    fun getEnableSpatialNavigation() = dataStoreManager.enableSpatialNavigation
 
     fun getLocalTrackingEnabled() = dataStoreManager.localTrackingEnabled
 

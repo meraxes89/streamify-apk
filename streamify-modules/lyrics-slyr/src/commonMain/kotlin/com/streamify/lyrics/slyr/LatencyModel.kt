@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlin.concurrent.Volatile
 import kotlin.math.abs
 
 /**
@@ -26,6 +27,7 @@ class LatencyModel(
     private val _slewedDelayMs = MutableStateFlow(0L)
     val slewedDelayMs: StateFlow<Long> = _slewedDelayMs.asStateFlow()
 
+    @Volatile
     private var targetDelayMs: Long = 0L
 
     init {

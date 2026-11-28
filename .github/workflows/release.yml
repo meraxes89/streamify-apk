@@ -112,20 +112,14 @@ jobs:
 
   wasm:
     name: "Web Wasm distribution"
-    uses: ./.github/workflows/_ci-wasm.yml
-    with:
-      release_mode: true
-
-  ios:
-    name: "Apple iOS release (Frameworks & Distribution)"
     needs: preflight
-    uses: ./.github/workflows/_ci-ios.yml
+    uses: ./.github/workflows/_ci-wasm.yml
     with:
       release_mode: true
 
   publish-release:
     name: "Publish release (SHA256SUMS + binaries)"
-    needs: [android, desktop, wasm, ios]
+    needs: [android, desktop, wasm]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -152,13 +146,6 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: wasm-release-archive
-          path: dist
-          merge-multiple: true
-
-      - name: Download Apple iOS release archive
-        uses: actions/download-artifact@v8
-        with:
-          name: ios-release-archive
           path: dist
           merge-multiple: true
 
@@ -214,6 +201,10 @@ jobs:
             --notes release_body.md \
             --git-sha "${{ github.sha }}" \
             --output release/version.json $EXTRA_FLAGS
+          if [ -n "${{ secrets.STREAMIFY_ANNOUNCEMENT_KEY }}" ]; then
+            STREAMIFY_ANNOUNCEMENT_KEY="${{ secrets.STREAMIFY_ANNOUNCEMENT_KEY }}" \
+              node scripts/sign_version_json.js --path release/version.json
+          fi
           cat release/version.json
 
       - name: Verify release manifest integrity & naming consistency
@@ -237,12 +228,27 @@ jobs:
           print("✅ All platform binaries correctly mapped with Streamify identity.")
           PY
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ inputs.tag_name || github.ref_name }}
-          body_path: release_body.md
-          files: |
-            release/*
-          draft: ${{ inputs.draft || false }}
-          prerelease: ${{ inputs.prerelease || false }}
+      - name: Publish GitHub Release atomically
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ inputs.tag_name || github.ref_name }}"
+          DRAFT="${{ inputs.draft || false }}"
+          PRERELEASE="${{ inputs.prerelease || false }}"
+          if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            IS_DRAFT=$(gh release view "$TAG" --repo "${{ github.repository }}" --json isDraft --jq '.isDraft')
+            if [ "$IS_DRAFT" != "true" ]; then
+              echo "::error::Published non-draft release $TAG already exists; refusing to mutate a live release."
+              exit 1
+            fi
+            gh release edit "$TAG" --repo "${{ github.repository }}" --notes-file release_body.md
+          else
+            gh release create "$TAG" --repo "${{ github.repository }}" \
+              --title "$TAG" --notes-file release_body.md --draft \
+              $([ "$PRERELEASE" = "true" ] && echo "--prerelease" || true)
+          fi
+          gh release upload "$TAG" release/* --repo "${{ github.repository }}" --clobber
+          if [ "$DRAFT" != "true" ]; then
+            gh release edit "$TAG" --repo "${{ github.repository }}" --draft=false
+          fi

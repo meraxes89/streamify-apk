@@ -155,6 +155,10 @@ class SettingsViewModel(
     val proxyPassword: StateFlow<String> = _proxyPassword
     private var _autoCheckUpdate = MutableStateFlow(false)
     val autoCheckUpdate: StateFlow<Boolean> = _autoCheckUpdate
+    private var _nightlyUpdatesEnabled = MutableStateFlow(false)
+    val nightlyUpdatesEnabled: StateFlow<Boolean> = _nightlyUpdatesEnabled
+    private var _autoInstallUpdates = MutableStateFlow(true)
+    val autoInstallUpdates: StateFlow<Boolean> = _autoInstallUpdates
     private var _updateChannel: MutableStateFlow<String> = MutableStateFlow(DataStoreManager.GITHUB)
     val updateChannel: StateFlow<String> = _updateChannel
     private val _aiProvider = MutableStateFlow<String>(DataStoreManager.AI_PROVIDER_OPENAI)
@@ -200,6 +204,9 @@ class SettingsViewModel(
 
     private var _enableLiquidGlass: MutableStateFlow<Boolean> = MutableStateFlow(false)
     val enableLiquidGlass: StateFlow<Boolean> = _enableLiquidGlass
+
+    private var _enableSpatialNavigation: MutableStateFlow<Boolean> = MutableStateFlow(false)
+    val enableSpatialNavigation: StateFlow<Boolean> = _enableSpatialNavigation
 
     private val _explicitContentEnabled = MutableStateFlow(false)
     val explicitContentEnabled: StateFlow<Boolean> = _explicitContentEnabled
@@ -344,6 +351,7 @@ class SettingsViewModel(
         getBackupDownloaded()
         getUpdateChannel()
         getEnableLiquidGlass()
+        getEnableSpatialNavigation()
         getExplicitContentEnabled()
         getDiscordLoggedIn()
         getDiscordRichPresenceEnabled()
@@ -409,6 +417,7 @@ class SettingsViewModel(
     fun setDownloadQuality(quality: String) {
         viewModelScope.launch {
             dataStoreManager.setDownloadQuality(quality)
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange("download_quality", quality)
             getDownloadQuality()
         }
     }
@@ -475,6 +484,7 @@ class SettingsViewModel(
     fun setCrossfadeEnabled(enabled: Boolean) {
         viewModelScope.launch {
             dataStoreManager.setCrossfadeEnabled(enabled)
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange("crossfade_enabled", enabled.toString())
             getCrossfadeEnabled()
         }
     }
@@ -490,6 +500,7 @@ class SettingsViewModel(
     fun setCrossfadeDuration(duration: Int) {
         viewModelScope.launch {
             dataStoreManager.setCrossfadeDuration(duration)
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange("crossfade_duration", duration.toString())
             getCrossfadeDuration()
         }
     }
@@ -691,6 +702,21 @@ class SettingsViewModel(
         viewModelScope.launch {
             dataStoreManager.setEnableLiquidGlass(enableLiquidGlass)
             getEnableLiquidGlass()
+        }
+    }
+
+    private fun getEnableSpatialNavigation() {
+        viewModelScope.launch {
+            dataStoreManager.enableSpatialNavigation.collect { enableSpatialNavigation ->
+                _enableSpatialNavigation.value = enableSpatialNavigation == DataStoreManager.TRUE
+            }
+        }
+    }
+
+    fun setEnableSpatialNavigation(enableSpatialNavigation: Boolean) {
+        viewModelScope.launch {
+            dataStoreManager.setEnableSpatialNavigation(enableSpatialNavigation)
+            getEnableSpatialNavigation()
         }
     }
 
@@ -907,12 +933,48 @@ class SettingsViewModel(
                 _autoCheckUpdate.value = autoCheckUpdate == DataStoreManager.TRUE
             }
         }
+        viewModelScope.launch {
+            dataStoreManager.getString(com.maxrave.simpmusic.data.update.UpdatePreferences.KEY_NIGHTLY_ENABLED).collect { value ->
+                val enabled = value == DataStoreManager.TRUE
+                _nightlyUpdatesEnabled.value = enabled
+                com.maxrave.simpmusic.data.update.UpdateStateHolder.nightlyEnabled = enabled
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.getString(com.maxrave.simpmusic.data.update.UpdatePreferences.KEY_AUTO_INSTALL_ENABLED).collect { value ->
+                val enabled = value != DataStoreManager.FALSE
+                _autoInstallUpdates.value = enabled
+                com.maxrave.simpmusic.data.update.UpdateStateHolder.autoInstallEnabled = enabled
+            }
+        }
     }
 
     fun setAutoCheckUpdate(autoCheckUpdate: Boolean) {
         viewModelScope.launch {
             dataStoreManager.setAutoCheckForUpdates(autoCheckUpdate)
             getAutoCheckUpdate()
+        }
+    }
+
+    fun setNightlyUpdatesEnabled(enabled: Boolean) {
+        _nightlyUpdatesEnabled.value = enabled
+        com.maxrave.simpmusic.data.update.UpdateStateHolder.nightlyEnabled = enabled
+        viewModelScope.launch {
+            dataStoreManager.putString(
+                com.maxrave.simpmusic.data.update.UpdatePreferences.KEY_NIGHTLY_ENABLED,
+                if (enabled) DataStoreManager.TRUE else DataStoreManager.FALSE,
+            )
+        }
+    }
+
+    fun setAutoInstallUpdates(enabled: Boolean) {
+        _autoInstallUpdates.value = enabled
+        com.maxrave.simpmusic.data.update.UpdateStateHolder.autoInstallEnabled = enabled
+        viewModelScope.launch {
+            dataStoreManager.putString(
+                com.maxrave.simpmusic.data.update.UpdatePreferences.KEY_AUTO_INSTALL_ENABLED,
+                if (enabled) DataStoreManager.TRUE else DataStoreManager.FALSE,
+            )
         }
     }
 
@@ -1410,9 +1472,12 @@ class SettingsViewModel(
                     // know about; pairing again starts both from it. A failure here must not stop the restore.
                     runCatching { librarySyncRepository.unpairAll() }
                         .onFailure { Logger.e(tag, "library sync: unpair before restore failed", it) }
+                    val preservedSyncIdentity = com.streamify.sync.StreamifySyncEngine.captureSyncIdentityForRestore()
                     restoreNative(commonRepository, uri) {
                         getData()
                     }
+                    runCatching { com.streamify.sync.StreamifySyncEngine.onPostBackupRestore(preservedSyncIdentity) }
+                        .onFailure { Logger.e(tag, "post-restore sync reconciliation failed", it) }
                 }.onFailure {
                     withContext(Dispatchers.Main) {
                         it.printStackTrace()
@@ -1451,6 +1516,7 @@ class SettingsViewModel(
     fun setNormalizeVolume(normalizeVolume: Boolean) {
         viewModelScope.launch {
             dataStoreManager.setNormalizeVolume(normalizeVolume)
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange("normalize_volume", normalizeVolume.toString())
             getNormalizeVolume()
         }
     }
@@ -1481,6 +1547,7 @@ class SettingsViewModel(
     fun setSkipSilent(skip: Boolean) {
         viewModelScope.launch {
             dataStoreManager.setSkipSilent(skip)
+            com.streamify.sync.StreamifySyncEngine.recordSettingChange("skip_silent", skip.toString())
             getSkipSilent()
         }
     }

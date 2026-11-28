@@ -47,12 +47,10 @@ import com.maxrave.simpmusic.viewModel.SharedViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import org.koin.android.ext.android.inject
 import org.koin.core.context.loadKoinModules
 import org.koin.dsl.module
 import org.simpmusic.crashlytics.pushPlayerError
-import pub.devrel.easypermissions.EasyPermissions
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
@@ -230,31 +228,6 @@ class MainActivity : AppCompatActivity() {
             WorkManager.getInstance(applicationContext).cancelUniqueWork("Blog RSS Worker")
         }
 
-        if (!EasyPermissions.hasPermissions(this, Manifest.permission.POST_NOTIFICATIONS)) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                val doNotAsk = getString("notification_permission_do_not_ask")
-                if (doNotAsk != "true") {
-                    val wasAsked = getString("notification_permission_asked")
-                    if (wasAsked != "true") {
-                        // First time: request system permission asynchronously without blocking main thread
-                        lifecycleScope.launch {
-                            val rationale =
-                                ComposeResUtils.getResString(ComposeResUtils.StringType.NOTIFICATION_REQUEST)
-                            EasyPermissions.requestPermissions(
-                                this@MainActivity,
-                                rationale,
-                                1,
-                                Manifest.permission.POST_NOTIFICATIONS,
-                            )
-                            putString("notification_permission_asked", "true")
-                        }
-                    } else {
-                        // Already asked before: show custom dialog with "Don't show again"
-                        viewModel.showNotificationPermissionDialog()
-                    }
-                }
-            }
-        }
         viewModel.getLocation()
 
         setContent {

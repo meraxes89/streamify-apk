@@ -22,7 +22,11 @@ tests: [streamify-modules/supabase/src/commonTest/]
 
 ## Current truth
 
-- Client-side PKCE with a loopback server on desktop; Vivo has a dedicated callback decision.
+- Client-side PKCE with a loopback server on desktop (`LoopbackAuthServer`); Vivo has a dedicated CustomTabs PKCE callback decision ([ADR-005](../adr/ADR-005-vivo-package-identity-and-oauth-resolution.md)).
+- `PlatformTokenStore` (`expect/actual`) persists `(UserProfile, accessToken, refreshToken, expiresAtEpochMs)` across Android (`AndroidKeyStore` AES-GCM), JVM (`0600` `~/.streamify/auth_session.json`), iOS (`NSUserDefaults`), and Wasm (`localStorage`), and `SupabaseClient` persists rotated refresh tokens after every `refreshSession()`, `exchangeCodeForSession()`, and `signInWithGoogleIdToken()` call.
+- `SupabaseClient.ensureValidAccessToken()` checks `AuthRefreshMutex.isTokenExpired()` proactively before `SupabaseLibrarySync` requests; `wasmJsMain` `init()` handles `?code=` / `#access_token=` callbacks and cleans the URL via `history.replaceState`, and `iosMain` launches `UIApplication.sharedApplication.openURL` with `handleIosAuthCallback` in `MainViewController.kt`.
+- `SupabaseConfig.DEFAULT_USER.isAdmin` is `false`; `PkceCrypto` uses `secureRandomBytes` CSPRNG (`SecureRandom` / `arc4random_buf` / `crypto.getRandomValues`); `OAuthPkceSession` coordinates PKCE authorization URLs with `redirect_to`-embedded state (surviving GoTrue broker query stripping) and dual defense-in-depth CSRF verification (constant-time state match when present, fallback to cryptographic PKCE S256 code challenge binding, and 10-minute expiry); `handleAuthCallback` rejects implicit fragment `access_token`s; `signOut` invokes best-effort `SupabaseClient.signOutRemote` and `setSession` clears prior `refreshToken`s when omitted.
+- `Ed25519ManifestSignatureVerifier` on iOS and Wasm fails closed (`false`) until native CryptoKit / WebCrypto verification is implemented.
 
 ## Interfaces
 
@@ -42,4 +46,4 @@ tests: [streamify-modules/supabase/src/commonTest/]
 
 - Add an auth-flow sequence diagram to the playbook.
 
-<!-- doc-verified-against: dd58e0b3b60e16bed71200d58c9b204431562349 -->
+<!-- doc-verified-against: 3dc66647b72a215ab581b4f36df5d018946d76bd -->

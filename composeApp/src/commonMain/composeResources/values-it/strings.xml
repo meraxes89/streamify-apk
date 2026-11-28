@@ -587,6 +587,8 @@
     <string name="update_channel">Aggiorna il canale</string>
     <string name="enable_liquid_glass_effect">Abilita liquid glass (BETA)</string>
     <string name="enable_liquid_glass_effect_description">Abilita l'effetto liquid glass di iOS in alcuni punti (Android 13+)</string>
+    <string name="enable_spatial_navigation">Navigazione spaziale (BETA)</string>
+    <string name="enable_spatial_navigation_description">Attiva transizioni a elementi condivisi, indietro predittivo e movimento a assi condivisi in tutta l'app</string>
     <string name="your_library">La tua libreria</string>
     <string name="play_explicit_content">Riproduci contenuti espliciti</string>
     <string name="play_explicit_content_description">Abilita la riproduzione di contenuti espliciti</string>
@@ -664,7 +666,7 @@
     <string name="local_tracking_description">Registra la cronologia di ascolto nel database locale</string>
     <string name="blog_notification_title">Notifiche post blog</string>
     <string name="blog_notification_description">Ricevi una notifica quando viene pubblicato un nuovo post sul blog</string>
-    <string name="simpmusic_charts">Classifica SimpMusic</string>
+    <string name="simpmusic_charts">Classifica Streamify</string>
     <string name="crossfading">Dissolvenza incrociata</string>
     <string name="your_320kbps_url">Il tuo URL 320kbps</string>
     <string name="your_320kbps_url_description">Lascia vuoto per scegliere automaticamente un URL di lavoro dal checker uptime.</string>

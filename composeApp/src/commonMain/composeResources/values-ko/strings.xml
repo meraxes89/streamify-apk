@@ -500,6 +500,8 @@
     <string name="update_channel">업데이트 채널</string>
     <string name="enable_liquid_glass_effect">리퀴드 글래스 켜기 (베타)</string>
     <string name="enable_liquid_glass_effect_description">일부 영역에 iOS 리퀴드 글래스 효과 적용 (Android 13 이상)</string>
+    <string name="enable_spatial_navigation">공간 탐색 (BETA)</string>
+    <string name="enable_spatial_navigation_description">공유 요소 전환, 예측형 뒤로 가기, 공유 축 화면 모션을 앱 전체에서 사용 설정</string>
     <string name="your_library">내 라이브러리</string>
     <string name="play_explicit_content">연령 제한 콘텐츠 재생</string>
     <string name="play_explicit_content_description">연령 제한 콘텐츠 재생 활성화</string>
@@ -578,7 +580,7 @@
     <string name="local_tracking_description">로컬 데이터베이스에 나의 재생 기록 저장</string>
     <string name="blog_notification_title">블로그 포스트 알림</string>
     <string name="blog_notification_description">새로운 블로그가 올라오면 알림 받기</string>
-    <string name="simpmusic_charts">Simpmusic 차트</string>
+    <string name="simpmusic_charts">Streamify 차트</string>
     <string name="crossfading">크로스페이드 중</string>
     <string name="your_320kbps_url">320kbps URL</string>
     <string name="your_320kbps_url_description">가동 시간 검사기에서 작동하는 URL을 자동으로 선택하려면 비워 두세요.</string>

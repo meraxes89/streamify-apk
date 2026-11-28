@@ -32,7 +32,27 @@ object HybridLogicalClock {
      * Updates recorded server time from Date/Timestamp headers.
      */
     fun updateServerTime(serverEpochMs: Long, localNowMs: Long = Clock.System.now().toEpochMilliseconds()) {
-        lastKnownServerTimeMs = serverEpochMs
+        synchronizedLock(lock) {
+            lastKnownServerTimeMs = serverEpochMs
+        }
+    }
+
+    /**
+     * Restores persisted HLC floor across app restarts so backward wall-clock jumps
+     * cannot produce HLCs older than previously emitted timestamps.
+     */
+    fun restore(persistedHlc: Long) {
+        if (persistedHlc <= 0L) return
+        synchronizedLock(lock) {
+            val persistedPhysical = unpackPhysical(persistedHlc)
+            val persistedCounter = unpackCounter(persistedHlc)
+            if (persistedPhysical > lastPhysicalMs) {
+                lastPhysicalMs = persistedPhysical
+                logicalCounter = persistedCounter
+            } else if (persistedPhysical == lastPhysicalMs && persistedCounter > logicalCounter) {
+                logicalCounter = persistedCounter
+            }
+        }
     }
 
     /**
@@ -40,10 +60,12 @@ object HybridLogicalClock {
      */
     fun now(physicalMillis: Long = Clock.System.now().toEpochMilliseconds()): Long =
         synchronizedLock(lock) {
-            val clampedPhysical = if (lastKnownServerTimeMs > 0L && physicalMillis > lastKnownServerTimeMs + MAX_SKEW_MS) {
-                lastKnownServerTimeMs + MAX_SKEW_MS
-            } else {
-                physicalMillis
+            val clampedPhysical = when {
+                lastKnownServerTimeMs > 0L && physicalMillis > lastKnownServerTimeMs + MAX_SKEW_MS ->
+                    lastKnownServerTimeMs + MAX_SKEW_MS
+                lastKnownServerTimeMs > 0L && physicalMillis < lastKnownServerTimeMs - MAX_SKEW_MS ->
+                    lastKnownServerTimeMs - MAX_SKEW_MS
+                else -> physicalMillis
             }
 
             if (clampedPhysical > lastPhysicalMs) {
@@ -98,9 +120,11 @@ object HybridLogicalClock {
     }
 
     internal fun resetForTesting(lastMs: Long = 0L, counter: Int = 0, serverTime: Long = 0L) {
-        lastPhysicalMs = lastMs
-        logicalCounter = counter
-        lastKnownServerTimeMs = serverTime
+        synchronizedLock(lock) {
+            lastPhysicalMs = lastMs
+            logicalCounter = counter
+            lastKnownServerTimeMs = serverTime
+        }
     }
 
     /**

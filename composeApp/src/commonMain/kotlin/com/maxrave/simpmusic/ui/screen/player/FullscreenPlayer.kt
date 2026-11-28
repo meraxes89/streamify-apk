@@ -105,22 +105,22 @@ import simpmusic.composeapp.generated.resources.five_seconds
 fun FullscreenPlayer(
     navController: NavController,
     sharedViewModel: SharedViewModel = koinInject(),
-    hideNavBar: () -> Unit = {},
-    showNavBar: () -> Unit = {},
+    // Chrome (bottom bar / mini player visibility) is derived by App.kt from this
+    // destination's ScreenPolicy — see RFC-003 §3.2. No callbacks here anymore, so a
+    // cancelled predictive back gesture can never leave the chrome desynced.
+    showNowPlayingSheet: () -> Unit = {},
 ) {
     var isFullScreen by remember { mutableStateOf(true) }
     val isInPipMode = rememberIsInPipMode()
 
     FullScreenRotationImmersive(
         onLaunch = {
-            hideNavBar()
             isFullScreen = true
             sharedViewModel.setFullScreen(true)
         },
         onDispose = {
             sharedViewModel.setFullScreen(false)
             isFullScreen = false
-            showNavBar()
         },
     )
 

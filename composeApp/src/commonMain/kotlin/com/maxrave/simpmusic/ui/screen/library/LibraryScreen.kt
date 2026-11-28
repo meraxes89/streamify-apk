@@ -262,14 +262,14 @@ fun LibraryScreen(
         when (filter) {
             LibraryChipType.YOUR_LIBRARY -> {
                 val state = rememberLazyListState()
-                val isScrollingUp by state.isScrollingUp()
+                val isScrollingUp = state.isScrollingUp()
                 LaunchedEffect(state) {
                     snapshotFlow { state.firstVisibleItemIndex }
                         .collect {
                             if (it <= 1) {
                                 onScrolling.invoke(true)
                             } else {
-                                onScrolling.invoke(isScrollingUp)
+                                onScrolling.invoke(isScrollingUp.value)
                             }
                         }
                 }

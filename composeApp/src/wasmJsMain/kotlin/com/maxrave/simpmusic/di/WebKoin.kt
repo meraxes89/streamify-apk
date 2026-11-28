@@ -210,6 +210,7 @@ fun initWebKoin() {
             webAppModule,
             viewModelModule,
             com.streamify.graphics.di.streamifyGraphicsModule,
+            com.streamify.sync.v5.di.syncV5Module,
         )
     }
 }

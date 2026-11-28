@@ -42,6 +42,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -279,7 +280,7 @@ fun HomeScreen(
 ) {
     val coroutineScope = rememberCoroutineScope()
     val scrollState = rememberLazyListState()
-    val isScrollingUp by scrollState.isScrollingUp()
+    val isScrollingUp = scrollState.isScrollingUp()
     val accountInfo by viewModel.accountInfo.collectAsStateWithLifecycle()
     val homeData by viewModel.homeItemList.collectAsStateWithLifecycle()
     val quickPicksTitle = stringResource(Res.string.quick_picks)
@@ -421,7 +422,7 @@ fun HomeScreen(
                 if (it <= 1) {
                     onScrolling.invoke(true)
                 } else {
-                    onScrolling.invoke(isScrollingUp)
+                    onScrolling.invoke(isScrollingUp.value)
                 }
             }
     }
@@ -865,7 +866,7 @@ fun HomeScreen(
                             }
                         }
                         if (homeListState == ListState.PAGINATION_EXHAUST) {
-                            items(newRelease, key = { "new_release_${it.title}_${it.channelId ?: it.moreEndpoint?.browseId ?: it.hashCode()}" }) {
+                            itemsIndexed(newRelease, key = { idx, it -> "new_release_${it.title}_${it.channelId ?: it.moreEndpoint?.browseId ?: idx}" }) { _, it ->
                                 AnimatedVisibility(
                                     visible = newRelease.isNotEmpty(),
                                 ) {
@@ -1421,7 +1422,7 @@ fun QuickPicks(
                     )
                 }
                 Text(
-                    text = stringResource(Res.string.quick_picks),
+                    text = homeItem.title.ifBlank { stringResource(Res.string.quick_picks) },
                     style = typo().headlineMedium,
                     color = MaterialTheme.colorScheme.onBackground,
                     maxLines = 1,
@@ -1448,7 +1449,7 @@ fun QuickPicks(
             state = lazyListState,
             flingBehavior = snapperFlingBehavior,
         ) {
-            items(homeItem.contents, key = { it.hashCode() }) {
+            itemsIndexed(homeItem.contents, key = { idx, it -> it?.videoId ?: it?.browseId ?: "qp_${idx}_${it?.title}" }) { _, it ->
                 if (it != null) {
                     QuickPicksItem(
                         onClick = {

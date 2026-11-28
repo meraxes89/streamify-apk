@@ -15,8 +15,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -49,23 +47,12 @@ fun DiscordLoginScreen(
     innerPadding: PaddingValues,
     navController: NavController,
     viewModel: LogInViewModel = koinInject(),
-    hideBottomNavigation: () -> Unit,
-    showBottomNavigation: () -> Unit,
 ) {
     var devLoginSheet by rememberSaveable {
         mutableStateOf(false)
     }
-    // Hide bottom navigation when entering this screen
-    LaunchedEffect(Unit) {
-        hideBottomNavigation()
-    }
-
-    // Show bottom navigation when leaving this screen
-    DisposableEffect(Unit) {
-        onDispose {
-            showBottomNavigation()
-        }
-    }
+    // Bottom navigation is hidden while a login destination is current — derived by
+    // App.kt from this destination's ChromePolicy, never set from here (RFC-003 §3.2).
 
     val state = rememberWebViewState()
     Box(modifier = Modifier.fillMaxSize()) {

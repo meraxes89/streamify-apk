@@ -31,7 +31,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -107,6 +106,8 @@ import simpmusic.composeapp.generated.resources.wrapped_share
 import simpmusic.composeapp.generated.resources.wrapped_tap_to_begin
 import simpmusic.composeapp.generated.resources.wrapped_tap_to_continue
 import simpmusic.composeapp.generated.resources.wrapped_year
+import com.maxrave.simpmusic.ui.navigation.SharedKeys
+import com.maxrave.simpmusic.ui.navigation.sharedHero
 import kotlin.random.Random
 
 /**
@@ -123,19 +124,13 @@ import kotlin.random.Random
 @Composable
 fun WrappedScreen(
     navController: NavController,
-    hideNavBar: () -> Unit,
-    showNavBar: () -> Unit,
     wrappedViewModel: WrappedViewModel = koinViewModel(),
 ) {
     val state by wrappedViewModel.uiState.collectAsStateWithLifecycle()
 
-    // The reel is a takeover, the way the fullscreen player is: the bottom bar would sit across
-    // the footer's own hint and share pill, and the mini player rides in the same slot. Restoring
-    // it on dispose rather than on the close button covers leaving by the system back gesture too.
-    DisposableEffect(Unit) {
-        hideNavBar()
-        onDispose { showNavBar() }
-    }
+    // The reel is still a takeover (its ScreenPolicy hides the bar and the mini player), but
+    // the hiding is now DERIVED by App.kt from the back stack entry — nothing imperative here,
+    // so a cancelled back gesture out of the reel cannot strand the chrome.
 
     WrappedTheme(
         artworkUrl = (state as? WrappedUiState.Ready)?.wrapped?.topTracks?.firstOrNull()?.song?.thumbnails,
@@ -233,6 +228,9 @@ private fun WrappedReel(
     wrapped: WrappedYear,
     onClose: () -> Unit,
 ) {
+    // The reel side of the Analytics→Wrapped morph: the whole reel grows out of the entry
+    // card the user tapped. Keyed by the year, exactly as WrappedEntryCard keys it.
+    val reelHeroKey = SharedKeys.hero(SharedKeys.Origin.WRAPPED, wrapped.year.toString())
     val cards = remember(wrapped) { wrapped.cards }
     val pagerState = rememberPagerState(pageCount = { cards.size })
     val scope = rememberCoroutineScope()
@@ -298,6 +296,7 @@ private fun WrappedReel(
         modifier =
             Modifier
                 .fillMaxSize()
+                .sharedHero(reelHeroKey)
                 .pointerInput(cards) {
                     detectTapGestures(
                         onPress = {
