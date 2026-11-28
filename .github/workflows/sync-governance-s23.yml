@@ -144,7 +144,15 @@ jobs:
           $PG -c "CREATE SCHEMA IF NOT EXISTS cron; CREATE OR REPLACE FUNCTION cron.schedule(text, text, text) RETURNS BIGINT LANGUAGE sql AS \$\$SELECT 1::BIGINT\$\$; CREATE OR REPLACE FUNCTION cron.unschedule(text) RETURNS BOOLEAN LANGUAGE sql AS \$\$SELECT TRUE\$\$;"
           $PG -f supabase/schema.sql
           $PG -f supabase/sql/tests/01_grants.sql
-          for mig in supabase/migrations/2026_01_*.sql supabase/migrations/2026_11_*.sql supabase/migrations/202612*.sql; do
+          for mig in \
+            supabase/migrations/2026_01_*.sql \
+            supabase/migrations/2026_11_drift_catchup.sql \
+            supabase/migrations/2026_11_sync_v2_unification.sql \
+            supabase/migrations/2026_11_sync_v3_user_graph.sql \
+            supabase/migrations/2026_11_sec10_rls_hardening.sql \
+            supabase/migrations/2026_11_p*.sql \
+            supabase/migrations/2026_11_ws_*.sql \
+            supabase/migrations/202612*.sql; do
             echo "Applying $mig"
             $PG -f "$mig"
           done
