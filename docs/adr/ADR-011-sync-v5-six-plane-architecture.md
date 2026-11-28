@@ -2,7 +2,7 @@
 
 * Status: Proposed (Supersedes ADR-008 / Server Contract v4)
 * Date: 2026-11-28
-* Verified against: 5090ce2996675e6373da0f9fe2e6bf97240a7ecd
+* Verified against: 3fce4cd9c7268bb7e8dd1113d47e9635d9e81e68
 
 ## Context
 

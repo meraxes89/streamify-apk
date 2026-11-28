@@ -47,6 +47,8 @@ object FractionalIndex {
         return keys
     }
 
+    fun needsRebalance(key: String): Boolean = key.length >= REBALANCE_THRESHOLD_LENGTH
+
     fun isValid(key: String): Boolean =
         key.length in 1..128 &&
             key.last() != '0' &&
@@ -96,10 +98,11 @@ object FractionalIndex {
     private fun buildJitter(length: Int, rng: () -> Int): String {
         val sb = StringBuilder(length)
         for (idx in 0 until length) {
+            val nonNeg = rng().and(0x7FFFFFFF)
             val digit = if (idx == length - 1) {
-                1 + (rng().and(0x7FFFFFFF) % (BASE - 1)) // Last char never '0'
+                1 + (nonNeg % (BASE - 1)) // Last char never '0'
             } else {
-                rng().and(0x7FFFFFFF) % BASE
+                nonNeg % BASE
             }
             sb.append(ALPHABET[digit])
         }

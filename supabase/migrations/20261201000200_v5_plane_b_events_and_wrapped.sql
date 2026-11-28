@@ -1295,7 +1295,7 @@ BEGIN
         'peak_hour_utc', v_peak_hour,
         'unique_tracks', v_unique_tracks
     );
-    v_checksum := 'sha256:' || md5(v_summary::text);
+    v_checksum := 'md5:' || md5(v_summary::text);
 
     INSERT INTO public.user_wrapped_snapshots (
         user_id, period_key, schema_version, source_event_count, total_listening_sec,
