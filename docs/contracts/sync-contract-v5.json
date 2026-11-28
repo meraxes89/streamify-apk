@@ -1,0 +1,121 @@
+{
+  "contract_version": 5,
+  "min_supported_client_contract": 4,
+  "required_migration": "20261201000500",
+  "hlc_bit_layout": {
+    "physical_ms_bits": 42,
+    "counter_bits": 22,
+    "max_forward_skew_ms": 300000,
+    "json_encoding": "base10_string"
+  },
+  "rpcs": {
+    "sync_push_v5": {
+      "plane": "A",
+      "args": ["p_device_id", "p_mutations"]
+    },
+    "sync_pull_v5": {
+      "plane": "A",
+      "args": ["p_device_id", "p_since_rev", "p_limit", "p_exclude_own", "p_include_catalog"]
+    },
+    "sync_bootstrap_v5": {
+      "plane": "A",
+      "args": ["p_page_token", "p_page_size", "p_include_catalog"]
+    },
+    "ingest_playback_events": {
+      "plane": "B",
+      "args": ["p_device_id", "p_events"]
+    },
+    "fetch_listening_history": {
+      "plane": "B",
+      "args": ["p_cursor_played_at", "p_cursor_event_id", "p_limit", "p_since"]
+    },
+    "upsert_search_query": {
+      "plane": "B",
+      "args": ["p_queries"]
+    },
+    "delete_search_query": {
+      "plane": "B",
+      "args": ["p_query", "p_deleted_at"]
+    },
+    "clear_search_history": {
+      "plane": "B",
+      "args": ["p_cleared_at"]
+    },
+    "fetch_search_history": {
+      "plane": "B",
+      "args": ["p_since_updated_at", "p_known_clear_epoch", "p_limit"]
+    },
+    "fetch_wrapped_snapshots": {
+      "plane": "B",
+      "args": ["p_period_keys"]
+    },
+    "upsert_wrapped_snapshot": {
+      "plane": "B",
+      "args": ["p_period_key", "p_schema_version", "p_source_event_count", "p_total_listening_sec", "p_checksum", "p_is_finalized", "p_summary_json", "p_force"]
+    },
+    "compute_wrapped_snapshot": {
+      "plane": "B",
+      "args": ["p_period_key", "p_force_recompute"]
+    },
+    "heartbeat_presence_v2": {
+      "plane": "C",
+      "args": ["p_device_id", "p_device_name", "p_platform", "p_is_playing", "p_track_id", "p_position_ms", "p_duration_ms", "p_playback_rate", "p_volume_pct", "p_lease_ttl_sec", "p_source_context", "p_source_id", "p_track_title", "p_artist_name", "p_artwork_url"]
+    },
+    "stop_presence": {
+      "plane": "C",
+      "args": ["p_device_id", "p_reason", "p_save_handoff", "p_track_id", "p_position_ms", "p_duration_ms", "p_source_context", "p_source_id", "p_track_title", "p_artist_name", "p_artwork_url"]
+    },
+    "get_live_presence": {
+      "plane": "C",
+      "args": ["p_exclude_device_id"]
+    },
+    "record_device_session": {
+      "plane": "C",
+      "args": ["p_device_id", "p_device_name", "p_platform", "p_os_version", "p_device_model", "p_app_version", "p_version_code", "p_build_flavor"]
+    },
+    "revoke_device_session": {
+      "plane": "C",
+      "args": ["p_target_device_id", "p_actor_device_id", "p_reason", "p_allow_self"]
+    },
+    "get_my_devices": {
+      "plane": "C",
+      "args": []
+    },
+    "get_tracks_batch": {
+      "plane": "D",
+      "args": ["p_track_ids", "p_known_versions", "p_enqueue_missing"]
+    },
+    "ingest_track_hints": {
+      "plane": "D",
+      "args": ["p_hints"]
+    },
+    "update_active_session_v5": {
+      "plane": "F",
+      "args": ["p_device_id", "p_device_name", "p_platform", "p_is_playing", "p_track_id", "p_position_ms", "p_duration_ms", "p_playback_rate", "p_source_context", "p_source_id", "p_track_title", "p_artist_name", "p_artwork_url", "p_queue_track_ids", "p_queue_index", "p_shuffle_enabled", "p_repeat_mode"]
+    },
+    "fetch_active_session_v5": {
+      "plane": "F",
+      "args": ["p_exclude_device_id", "p_include_catalog"]
+    },
+    "get_hybrid_home_shelves": {
+      "plane": "F",
+      "args": ["p_tz_offset_min", "p_daypart", "p_limit_per_shelf", "p_if_modified_since"]
+    },
+    "get_admin_dashboard_stats": {
+      "plane": "F",
+      "args": []
+    },
+    "get_admin_edge_compute_stats": {
+      "plane": "F",
+      "args": []
+    },
+    "get_admin_top_tracks": {
+      "plane": "F",
+      "args": ["p_limit", "p_window_days"]
+    },
+    "get_admin_fleet_overview": {
+      "plane": "F",
+      "args": []
+    }
+  }
+}
