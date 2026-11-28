@@ -794,6 +794,7 @@ val mpvNativesChecksums =
 val mpvSetupAll by tasks.registering {
     group = "mpv-multi"
     description = "Populate mpv-natives/ from the prebuilt release tarballs. Runs anywhere; this is what CI uses."
+    notCompatibleWithConfigurationCache("mpvSetupAll captures script-level helpers and properties")
     val outputRoot = rootDir.resolve("mpv-natives")
     // Without declared inputs Gradle treats an existing output directory as up to date, so bumping
     // the tag or the mpv version would silently keep shipping the previous natives.
