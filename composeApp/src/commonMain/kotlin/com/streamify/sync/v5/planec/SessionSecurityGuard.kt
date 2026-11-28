@@ -20,7 +20,7 @@ class SessionSecurityGuard(
     fun start(scope: CoroutineScope) {
         watchJob?.cancel()
         watchJob = scope.launch {
-            executor.deviceRevoked.collectLatest { event ->
+            executor.deviceRevokedEvents.collectLatest { event ->
                 onDeviceRevoked(event)
             }
         }

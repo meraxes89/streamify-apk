@@ -15,9 +15,9 @@ interface SyncWriteGuard {
 /**
  * Pure Kotlin CoroutineContext marker present on all 4 KMP targets during remote sync apply.
  */
-object StreamifyRemoteApplyContext : AbstractCoroutineContextElement(Key) {
-    object Key : CoroutineContext.Key<StreamifyRemoteApplyContext>
-}
+object StreamifyRemoteApplyContext :
+    AbstractCoroutineContextElement(StreamifyRemoteApplyContext),
+    CoroutineContext.Key<StreamifyRemoteApplyContext>
 
 expect fun createPlatformSyncWriteGuard(): SyncWriteGuard
 
