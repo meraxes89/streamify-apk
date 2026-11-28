@@ -60,7 +60,7 @@ object SupabaseWrappedSync {
         var h2 = 1099511628211L
         for (ch in seed) {
             h1 = (h1 xor ch.code.toLong()) * 1099511628211L
-            h2 = (h2 * 31L) xor (ch.code.toLong() + 0x9e3779b97f4a7c15L)
+            h2 = (h2 * 31L) xor (ch.code.toLong() + -7046029254386353131L)
         }
         return Uuid.fromLongs(h1, h2).toString()
     }

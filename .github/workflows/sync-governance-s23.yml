@@ -141,9 +141,10 @@ jobs:
         run: |
           PG="psql -h 127.0.0.1 -p 5432 -U postgres -d streamify_v5_test -v ON_ERROR_STOP=1"
           $PG -f supabase/sql/tests/00_test_shim.sql
+          $PG -c "CREATE SCHEMA IF NOT EXISTS cron; CREATE OR REPLACE FUNCTION cron.schedule(text, text, text) RETURNS BIGINT LANGUAGE sql AS \$\$SELECT 1::BIGINT\$\$; CREATE OR REPLACE FUNCTION cron.unschedule(text) RETURNS BOOLEAN LANGUAGE sql AS \$\$SELECT TRUE\$\$;"
           $PG -f supabase/schema.sql
           $PG -f supabase/sql/tests/01_grants.sql
-          for mig in supabase/migrations/202612*.sql; do
+          for mig in supabase/migrations/2026_01_*.sql supabase/migrations/2026_11_*.sql supabase/migrations/202612*.sql; do
             echo "Applying $mig"
             $PG -f "$mig"
           done
