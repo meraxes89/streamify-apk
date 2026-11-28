@@ -180,8 +180,8 @@ class PlaneBV5Test {
                     )
             }
         }
-        val pipeline = PlaybackEventPipeline(storage, client)
-        val outcome = pipeline.flushPending("dev1", nowMs = 10_000L)
+        val pipeline = PlaybackEventPipeline(storage, client) { 10_000L }
+        val outcome = pipeline.flushPending("dev1")
 
         assertTrue(outcome is PlaybackFlushOutcome.Flushed)
         assertEquals(1, outcome.acked)
