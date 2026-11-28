@@ -26,7 +26,7 @@ fun initKoinIos(versionName: String = BuildKonfig.versionName) {
             ),
         )
         modules(viewModelModule)
-        modules(mediaHalModule, streamifyLyricsSlyrModule, supabaseModule, streamifyJamModule)
+        modules(mediaHalModule, streamifyLyricsSlyrModule, supabaseModule, streamifyJamModule, com.streamify.sync.v5.di.syncV5Module)
     }
 }
 

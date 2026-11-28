@@ -1,7 +1,10 @@
 package com.streamify.sync.v5
 
+import com.streamify.supabase.SyncPullResult
+import com.streamify.supabase.SyncPushResult
 import com.streamify.sync.HybridLogicalClock
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -70,5 +73,75 @@ class PlaneAV5Test {
         assertTrue(insideRemoteApply)
         assertFalse(guard.isRemoteApplying())
         assertEquals(0L, HybridLogicalClock.unpackCounter(HybridLogicalClock.pack(1000L, 0)))
+    }
+
+    @Test
+    fun dataStoreSyncV5StorePersistsAcrossRestartsWith64BitHlc(): Unit = runBlocking {
+        var persisted = ""
+        val largeHlc = 7_558_000_000_000_000_123L // > 2^53 (WasmJS-unsafe if serialized as number)
+        val writer = DataStoreSyncV5Store(
+            readSnapshot = { persisted },
+            writeSnapshot = { persisted = it },
+        )
+        writer.enqueueOrCoalesce(
+            SyncOutboxRow("m-persist", "user_like", "yt:abc", "upsert", largeHlc, "dev-1", """{"track_id":"yt:abc"}"""),
+        )
+        writer.saveCheckpoint(SyncCheckpointRow(userId = "u1", deviceId = "dev-1", pullCursorRev = 42L, lastHlc = largeHlc, bootstrapComplete = true))
+        assertTrue(persisted.isNotBlank())
+
+        // Simulate process restart with a fresh DataStoreSyncV5Store instance
+        val reader = DataStoreSyncV5Store(
+            readSnapshot = { persisted },
+            writeSnapshot = { persisted = it },
+        )
+        assertEquals(1, reader.pendingCount())
+        val claimed = reader.claimPendingBatch(10)
+        assertEquals(largeHlc, claimed.single().hlc)
+        val cp = reader.getCheckpoint("u1")!!
+        assertEquals(42L, cp.pullCursorRev)
+        assertEquals(largeHlc, cp.lastHlc)
+        assertTrue(cp.bootstrapComplete)
+    }
+
+    @Test
+    fun v4ShimResponsesDecodeIntoLegacySyncPushAndPullModels() {
+        val json = Json { ignoreUnknownKeys = true; isLenient = true; coerceInputValues = true }
+        val pushJson = """
+            {
+              "status": "OK",
+              "applied": 2,
+              "rejected": 0,
+              "cursor": 14,
+              "results": [
+                {"key": "yt:abc", "entity": "like", "status": "applied", "error": null},
+                {"key": "theme_mode", "entity": "settings", "status": "applied", "error": null}
+              ]
+            }
+        """.trimIndent()
+        val push = json.decodeFromString<SyncPushResult>(pushJson)
+        assertEquals(2, push.applied)
+        assertEquals(0, push.rejected)
+        assertEquals(14L, push.cursor)
+        assertEquals(2, push.results.size)
+
+        val pullJson = """
+            {
+              "status": "OK",
+              "cursor": 14,
+              "head_cursor": 14,
+              "has_more": false,
+              "ops": [
+                {"seq": 13, "entity": "like", "op": "U", "key": "yt:abc", "hlc": 7558000000000000000, "data": {"track_id": "yt:abc"}},
+                {"seq": 14, "entity": "settings", "op": "U", "key": "theme_mode", "hlc": 7558000000000000001, "data": {"settings": {"theme_mode": "DARK"}}}
+              ]
+            }
+        """.trimIndent()
+        val pull = json.decodeFromString<SyncPullResult>(pullJson)
+        assertEquals(14L, pull.cursor)
+        assertEquals(14L, pull.headCursor)
+        assertFalse(pull.hasMore)
+        assertEquals(2, pull.ops.size)
+        assertEquals("like", pull.ops[0].entity)
+        assertEquals("settings", pull.ops[1].entity)
     }
 }
