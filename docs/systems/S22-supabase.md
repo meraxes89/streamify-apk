@@ -22,7 +22,7 @@ tests: [supabase/sql/tests/]
 
 ## Current truth
 
-- Contract v4 and deterministic LWW are governed by ADR-008 (`2026_11_p8_v4_server_contract_and_lww_hardening.sql`); RFC-002 is the target-schema proposal.
+- Plane A Delta Sync v5 (`20261201000000_v5_plane_a_expand_and_backfill.sql`, `20261201000100_v5_plane_a_rpcs_and_shim.sql`) is deployed on `dbgtvzgwixerhnwvhtil` per [ADR-011](../adr/ADR-011-sync-v5-six-plane-architecture.md), replacing `tg_*_changelog` triggers with `sync_push_v5`, `sync_pull_v5`, `sync_bootstrap_v5`, `sync_gc_v5`, single-policy `FORCE ROW LEVEL SECURITY`, and v4 compatibility shims (`sync_push`/`sync_pull`).
 
 ## Interfaces
 
@@ -34,14 +34,15 @@ tests: [supabase/sql/tests/]
 - Decision: [ADR-003-hybrid-sqlite-supabase-sync](../adr/ADR-003-hybrid-sqlite-supabase-sync.md)
 - Decision: [ADR-006-unified-hybrid-sync-v2](../adr/ADR-006-unified-hybrid-sync-v2.md)
 - Decision: [ADR-008-server-contract-v4-and-sync-dataplane-hardening](../adr/ADR-008-server-contract-v4-and-sync-dataplane-hardening.md)
+- Decision: [ADR-011-sync-v5-six-plane-architecture](../adr/ADR-011-sync-v5-six-plane-architecture.md)
 
 ## Known limits / debt
 
 - Historical audits found RLS exposure and catalog cascade defects; see RFC-002.
+- Planes B, C, D, and F migrations are next in sequence under `ADR-011`.
 
 ## Refinement backlog
 
 - Keep migration numbering and RLS tests in the same PR as RPC changes.
-- Phase P10 (`2026_12_p10_hlc_profiles_history_search.sql`) adds `(modified_hlc, modified_by)` LWW to `user_search_history` / `user_listening_history` and enforces monotonic server-`NOW()` updates on `profiles.last_active_at`.
 
-<!-- doc-verified-against: cbf2f9bf8a2f5978a089a58612c5cf9a15ab8d5a -->
+<!-- doc-verified-against: 3fce4cd9c7268bb7e8dd1113d47e9635d9e81e68 -->
