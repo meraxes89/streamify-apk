@@ -79,6 +79,7 @@ jobs:
               "B": pathlib.Path("streamify-modules/supabase/src/commonMain/kotlin/com/streamify/supabase/v5/PlaneBEventClient.kt").read_text(),
               "C": pathlib.Path("streamify-modules/supabase/src/commonMain/kotlin/com/streamify/supabase/v5/PlaneCPresenceClient.kt").read_text(),
               "D": pathlib.Path("streamify-modules/supabase/src/commonMain/kotlin/com/streamify/supabase/v5/PlaneDCatalogClient.kt").read_text(),
+              "F": pathlib.Path("streamify-modules/supabase/src/commonMain/kotlin/com/streamify/supabase/v5/PlaneFCompanionClient.kt").read_text(),
           }
           missing = []
           for rpc, spec in manifest["rpcs"].items():

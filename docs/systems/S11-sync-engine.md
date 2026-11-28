@@ -44,6 +44,7 @@ tests: [streamify-modules/supabase/src/commonTest/]
 - **Plane C (Presence, Device Fleet & Active Users):** Added `PlaneCPresenceClient` (6 RPCs: `heartbeat_presence_v2`, `stop_presence`, `get_live_presence`, `record_device_session`, `revoke_device_session`, `get_my_devices`), `DeviceSessionRegistrar` (6-hour throttle + version-change refresh), `PresenceLeaseClient` (45s/70s TTL leases + dead-reckoning), and `SessionSecurityGuard` (observes `SupabaseRpcExecutor.deviceRevoked`).
 - **Plane D (Catalog & Hydration):** Added `PlaneDCatalogClient` (`get_tracks_batch`, `ingest_track_hints`, `CatalogTrackDto`) and `CatalogHydrationCoordinator` (echo-free monotonic local catalog merge, 30-minute throttled `get_tracks_batch` repair sweeps, and `HintDebounceBuffer` for tracks with `catalogAuthority < 50`).
 - **Plane E (Decomposition & Governance):** Added `SyncCoordinator` / `StreamifySyncCoordinator` (plane-isolated concurrency across Planes A–D), `SettingsSyncObserver` (value-keyed echo suppression), `CoreSyncBridge` (drains legacy `core/` mutations into `SyncV5Store`), `syncV5Module` (Koin DI wiring), and S23 CI RPC-parity gate in `.github/workflows/sync-governance-s23.yml`.
+- **Plane F (Companion Read-Models & Peer-Sync Bridge):** Added `PlaneFCompanionClient` (`update_active_session_v5`, `fetch_active_session_v5`, `get_hybrid_home_shelves`, `get_admin_*`) and `DefaultPeerSyncBridge` (non-transferable local identity allowlist + cross-account playlist UUID remapping via `FractionalIndex` & `SyncWriteGuard`).
 
 ## Interfaces
 
