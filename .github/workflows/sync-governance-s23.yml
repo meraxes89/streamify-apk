@@ -89,3 +89,40 @@ jobs:
           assert not missing, f"Missing contract RPCs in KMP clients: {missing}"
           print("Plane A-D KMP client RPC parity verified")
           PY
+
+  v5-migration-replay-and-sql-tests:
+    name: v5 Migration Replay & SQL RPC Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: streamify_v5_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Replay schema + v5 migrations + run v5 SQL tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          PG="psql -h 127.0.0.1 -p 5432 -U postgres -d streamify_v5_test -v ON_ERROR_STOP=1"
+          $PG -f supabase/sql/tests/00_test_shim.sql
+          $PG -f supabase/schema.sql
+          $PG -f supabase/sql/tests/01_grants.sql
+          for mig in supabase/migrations/202612*.sql; do
+            echo "Applying $mig"
+            $PG -f "$mig"
+          done
+          $PG -f supabase/sql/tests/02_migration_chain_replay.sql
+          $PG -f supabase/sql/tests/03_sync_v5_rpc_tests.sql

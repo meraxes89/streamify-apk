@@ -36,6 +36,27 @@ EXCEPTION WHEN OTHERS THEN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION public._v5_try_parse_boolean(p_val TEXT)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+IMMUTABLE
+AS $$
+DECLARE
+    v_norm TEXT;
+BEGIN
+    IF p_val IS NULL THEN
+        RETURN NULL;
+    END IF;
+    v_norm := lower(btrim(p_val));
+    IF v_norm IN ('true', 't', '1') THEN
+        RETURN TRUE;
+    ELSIF v_norm IN ('false', 'f', '0') THEN
+        RETURN FALSE;
+    END IF;
+    RETURN NULL;
+END;
+$$;
+
 -- Forward-compatible Plane C hooks (Plane C migration upgrades _plane_c_touch_activity)
 CREATE OR REPLACE FUNCTION public._plane_c_is_device_revoked(
     p_user_id   UUID,
@@ -122,6 +143,7 @@ DECLARE
     v_ts             TIMESTAMPTZ;
     v_ts2            TIMESTAMPTZ;
     v_parent_deleted BOOLEAN;
+    v_bool           BOOLEAN;
 BEGIN
     IF v_user_id IS NULL THEN
         RETURN jsonb_build_object('protocol_version', 5, 'status', 'UNAUTHORIZED');
@@ -351,6 +373,15 @@ BEGIN
                 v_playlist_name := 'Deleted Playlist';
             END IF;
             v_ts := COALESCE(public._v5_try_parse_timestamptz(v_payload->>'created_at'), now());
+            IF v_payload ? 'is_public' AND v_payload->>'is_public' IS NOT NULL THEN
+                v_bool := public._v5_try_parse_boolean(v_payload->>'is_public');
+                IF v_bool IS NULL THEN
+                    v_results := v_results || jsonb_build_object('mutation_id', v_mut_id::TEXT, 'status', 'rejected', 'error_code', 'INVALID_PAYLOAD');
+                    CONTINUE;
+                END IF;
+            ELSE
+                v_bool := FALSE;
+            END IF;
             v_entity_key := v_playlist_id::TEXT;
 
             INSERT INTO public.playlists (
@@ -359,7 +390,7 @@ BEGIN
                 v_playlist_id, v_user_id, v_playlist_name,
                 COALESCE(v_payload->>'description', ''),
                 v_payload->>'cover_url',
-                COALESCE((v_payload->>'is_public')::BOOLEAN, false),
+                v_bool,
                 v_ts, (v_op = 'delete'), CASE WHEN v_op = 'delete' THEN now() ELSE NULL END,
                 v_hlc, v_device_id, now()
             )
@@ -391,7 +422,7 @@ BEGIN
                              'name', v_playlist_name,
                              'description', COALESCE(v_payload->>'description', ''),
                              'cover_url', v_payload->>'cover_url',
-                             'is_public', COALESCE((v_payload->>'is_public')::BOOLEAN, false)
+                             'is_public', v_bool
                          ) ELSE '{}'::jsonb END;
 
         ELSIF v_entity_type = 'playlist_track' THEN
@@ -504,6 +535,15 @@ BEGIN
             END IF;
             v_podcast_id := COALESCE(NULLIF(btrim(v_podcast_id), ''), 'unknown');
             v_ts := COALESCE(public._v5_try_parse_timestamptz(v_payload->>'played_at'), now());
+            IF v_payload ? 'completed' AND v_payload->>'completed' IS NOT NULL THEN
+                v_bool := public._v5_try_parse_boolean(v_payload->>'completed');
+                IF v_bool IS NULL THEN
+                    v_results := v_results || jsonb_build_object('mutation_id', v_mut_id::TEXT, 'status', 'rejected', 'error_code', 'INVALID_PAYLOAD');
+                    CONTINUE;
+                END IF;
+            ELSE
+                v_bool := FALSE;
+            END IF;
             v_entity_key := v_episode_id;
 
             INSERT INTO public.user_podcast_episode_state (
@@ -512,7 +552,7 @@ BEGIN
             ) VALUES (
                 v_user_id, v_episode_id, v_podcast_id,
                 LEAST(2147483647, (v_pos_ms / 1000))::INT, v_pos_ms, v_dur_ms,
-                COALESCE((v_payload->>'completed')::BOOLEAN, false), v_ts,
+                v_bool, v_ts,
                 (v_op = 'delete'), CASE WHEN v_op = 'delete' THEN now() ELSE NULL END,
                 v_hlc, v_device_id, now()
             )
@@ -541,7 +581,7 @@ BEGIN
                              'podcast_id', v_podcast_id,
                              'position_ms', v_pos_ms,
                              'duration_ms', v_dur_ms,
-                             'completed', COALESCE((v_payload->>'completed')::BOOLEAN, false),
+                             'completed', v_bool,
                              'played_at', v_ts
                          ) ELSE '{}'::jsonb END;
         END IF;
@@ -753,8 +793,15 @@ BEGIN
         FROM public.user_sync_state WHERE user_id = v_user_id;
         v_snapshot_rev := COALESCE(v_snapshot_rev, 0);
     ELSE
+        IF (p_page_token ? 'snapshot_rev' AND p_page_token->>'snapshot_rev' IS NOT NULL
+            AND public._v5_try_parse_bigint(p_page_token->>'snapshot_rev') IS NULL)
+           OR (p_page_token ? 'table_idx' AND p_page_token->>'table_idx' IS NOT NULL
+            AND public._v5_try_parse_bigint(p_page_token->>'table_idx') IS NULL)
+        THEN
+            RETURN jsonb_build_object('protocol_version', 5, 'status', 'INVALID_CURSOR');
+        END IF;
         v_snapshot_rev := COALESCE(public._v5_try_parse_bigint(p_page_token->>'snapshot_rev'), 0);
-        v_table_idx    := COALESCE((p_page_token->>'table_idx')::INT, 0);
+        v_table_idx    := LEAST(GREATEST(COALESCE(public._v5_try_parse_bigint(p_page_token->>'table_idx'), 0), 0), 7)::INT;
         v_after_key    := COALESCE(p_page_token->>'after_key', '');
     END IF;
 
@@ -769,7 +816,7 @@ BEGIN
             WITH q AS (
                 SELECT id::TEXT AS k, name, description, cover_url, is_public, created_at, modified_hlc, modified_by
                 FROM public.playlists
-                WHERE user_id = v_user_id AND NOT deleted AND id::TEXT > v_after_key
+                WHERE user_id = v_user_id AND NOT deleted AND (id::TEXT COLLATE "C") > (v_after_key COLLATE "C")
                 ORDER BY id::TEXT COLLATE "C" ASC
                 LIMIT v_remaining + 1
             ), p AS (SELECT * FROM q LIMIT v_remaining)
@@ -784,7 +831,7 @@ BEGIN
             WITH q AS (
                 SELECT (playlist_id::TEXT || ':' || track_id) AS k, playlist_id::TEXT AS pid, track_id, sort_key, added_at, modified_hlc, modified_by
                 FROM public.playlist_tracks
-                WHERE user_id = v_user_id AND NOT deleted AND (playlist_id::TEXT || ':' || track_id) > v_after_key
+                WHERE user_id = v_user_id AND NOT deleted AND ((playlist_id::TEXT || ':' || track_id) COLLATE "C") > (v_after_key COLLATE "C")
                 ORDER BY (playlist_id::TEXT || ':' || track_id) COLLATE "C" ASC
                 LIMIT v_remaining + 1
             ), p AS (SELECT * FROM q LIMIT v_remaining)
@@ -799,7 +846,7 @@ BEGIN
             WITH q AS (
                 SELECT track_id AS k, created_at, modified_hlc, modified_by
                 FROM public.user_likes
-                WHERE user_id = v_user_id AND NOT deleted AND track_id > v_after_key
+                WHERE user_id = v_user_id AND NOT deleted AND (track_id COLLATE "C") > (v_after_key COLLATE "C")
                 ORDER BY track_id COLLATE "C" ASC
                 LIMIT v_remaining + 1
             ), p AS (SELECT * FROM q LIMIT v_remaining)
@@ -814,7 +861,7 @@ BEGIN
             WITH q AS (
                 SELECT track_id AS k, added_at, source, metadata, modified_hlc, modified_by
                 FROM public.user_library_tracks
-                WHERE user_id = v_user_id AND NOT deleted AND track_id > v_after_key
+                WHERE user_id = v_user_id AND NOT deleted AND (track_id COLLATE "C") > (v_after_key COLLATE "C")
                 ORDER BY track_id COLLATE "C" ASC
                 LIMIT v_remaining + 1
             ), p AS (SELECT * FROM q LIMIT v_remaining)
@@ -829,7 +876,7 @@ BEGIN
             WITH q AS (
                 SELECT (item_type || ':' || item_id) AS k, item_type, item_id, created_at, metadata, modified_hlc, modified_by
                 FROM public.user_item_favorites
-                WHERE user_id = v_user_id AND NOT deleted AND (item_type || ':' || item_id) > v_after_key
+                WHERE user_id = v_user_id AND NOT deleted AND ((item_type || ':' || item_id) COLLATE "C") > (v_after_key COLLATE "C")
                 ORDER BY (item_type || ':' || item_id) COLLATE "C" ASC
                 LIMIT v_remaining + 1
             ), p AS (SELECT * FROM q LIMIT v_remaining)
@@ -849,7 +896,7 @@ BEGIN
                 CROSS JOIN LATERAL jsonb_each(us.settings) AS kv(key, value)
                 WHERE us.user_id = v_user_id
                   AND COALESCE((us.key_hlcs -> kv.key ->> 'deleted')::BOOLEAN, false) = false
-                  AND kv.key > v_after_key
+                  AND (kv.key COLLATE "C") > (v_after_key COLLATE "C")
                 ORDER BY kv.key COLLATE "C" ASC
                 LIMIT v_remaining + 1
             ), p AS (SELECT * FROM q LIMIT v_remaining)
@@ -864,7 +911,7 @@ BEGIN
             WITH q AS (
                 SELECT episode_id AS k, podcast_id, position_ms, duration_ms, completed, played_at, modified_hlc, modified_by
                 FROM public.user_podcast_episode_state
-                WHERE user_id = v_user_id AND NOT deleted AND episode_id > v_after_key
+                WHERE user_id = v_user_id AND NOT deleted AND (episode_id COLLATE "C") > (v_after_key COLLATE "C")
                 ORDER BY episode_id COLLATE "C" ASC
                 LIMIT v_remaining + 1
             ), p AS (SELECT * FROM q LIMIT v_remaining)

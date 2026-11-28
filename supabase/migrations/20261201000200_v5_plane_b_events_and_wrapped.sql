@@ -384,9 +384,8 @@ BEGIN
         RETURN jsonb_build_object('status', 'BATCH_TOO_LARGE', 'max_batch_size', 100);
     END IF;
 
-    -- Serialize concurrent playback ingestion for THIS user only
-    PERFORM 1 FROM public.profiles WHERE id = v_user_id FOR UPDATE;
-    IF NOT FOUND THEN
+    -- Non-locking profile check (idempotent checkpoint PK serializes per-event updates)
+    IF NOT EXISTS (SELECT 1 FROM public.profiles WHERE id = v_user_id) THEN
         RETURN jsonb_build_object('status', 'PROFILE_NOT_FOUND');
     END IF;
 
@@ -559,13 +558,20 @@ BEGIN
         listening_seconds = user_listening_daily.listening_seconds + EXCLUDED.listening_seconds,
         updated_at        = v_now;
 
-    -- Apply collapsed lifetime profile counter increment once per batch
-    UPDATE public.profiles
-    SET
-        total_plays       = COALESCE(total_plays, 0) + v_batch_plays,
-        listening_seconds = COALESCE(listening_seconds, 0) + v_batch_sec
-    WHERE id = v_user_id
-    RETURNING total_plays, listening_seconds INTO v_final_plays, v_final_sec;
+    -- Apply collapsed lifetime profile counter increment once per batch (skip lock on zero-delta batches)
+    IF v_batch_plays > 0 OR v_batch_sec > 0 THEN
+        UPDATE public.profiles
+        SET
+            total_plays       = COALESCE(total_plays, 0) + v_batch_plays,
+            listening_seconds = COALESCE(listening_seconds, 0) + v_batch_sec
+        WHERE id = v_user_id
+        RETURNING total_plays, listening_seconds INTO v_final_plays, v_final_sec;
+    ELSE
+        SELECT COALESCE(total_plays, 0), COALESCE(listening_seconds, 0)
+        INTO v_final_plays, v_final_sec
+        FROM public.profiles
+        WHERE id = v_user_id;
+    END IF;
 
     PERFORM public._plane_c_touch_activity(v_user_id, v_device_id);
 

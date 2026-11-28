@@ -2,7 +2,10 @@ package com.streamify.sync.v5
 
 import com.streamify.supabase.SyncPullResult
 import com.streamify.supabase.SyncPushResult
+import com.streamify.supabase.v5.PlaneAStateSyncClient
 import com.streamify.sync.HybridLogicalClock
+import com.streamify.sync.v5.planea.PushOutcome
+import com.streamify.sync.v5.planea.SyncOutboxProcessor
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
@@ -143,5 +146,46 @@ class PlaneAV5Test {
         assertEquals(2, pull.ops.size)
         assertEquals("like", pull.ops[0].entity)
         assertEquals("settings", pull.ops[1].entity)
+    }
+
+    @Test
+    fun outboxProcessorIsolatesPoisonMutationOnBatchTerminalError() : Unit = runBlocking {
+        val store = InMemorySyncV5Store()
+        store.enqueueOrCoalesce(
+            SyncOutboxRow("m-good", "user_like", "trk_good", "upsert", 100L, "dev1", """{"track_id":"trk_good"}"""),
+        )
+        store.enqueueOrCoalesce(
+            SyncOutboxRow("m-poison", "user_like", "trk_poison", "upsert", 200L, "dev1", """{"track_id":"trk_poison"}"""),
+        )
+
+        var calls = 0
+        val client = PlaneAStateSyncClient(
+            FakeRpcExecutor { rpcName, bodyJson ->
+                assertEquals("sync_push_v5", rpcName)
+                calls++
+                when {
+                    bodyJson.contains("m-good") && bodyJson.contains("m-poison") ->
+                        FakeRpcResponse(httpStatus = 400, body = """{"message":"bad batch"}""")
+                    bodyJson.contains("m-poison") ->
+                        FakeRpcResponse(httpStatus = 400, body = """{"message":"bad item"}""")
+                    else ->
+                        FakeRpcResponse(
+                            httpStatus = 200,
+                            body = """{"protocol_version":5,"status":"OK","head_rev":"5","results":[{"mutation_id":"m-good","status":"applied","rev":"5"}]}""",
+                        )
+                }
+            }
+        )
+
+        val acked = mutableListOf<String>()
+        val processor = SyncOutboxProcessor(store, client, onMutationsAcked = { acked.addAll(it) })
+        val outcome = processor.pushPending("u1", "dev1", 0L)
+
+        assertTrue(outcome is PushOutcome.Completed)
+        assertEquals(1, outcome.pushedCount)
+        assertEquals(3, calls)
+        assertEquals(listOf("m-good"), acked)
+        val dl = store.getDeadLetterSummary()
+        assertEquals(1, dl.count)
     }
 }

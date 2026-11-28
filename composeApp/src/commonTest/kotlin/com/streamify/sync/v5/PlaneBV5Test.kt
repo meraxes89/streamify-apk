@@ -157,4 +157,37 @@ class PlaneBV5Test {
 
         assertFalse(calls > 1)
     }
+
+    @Test
+    fun playbackPipelineIsolatesPoisonEventOnBatchTerminalError() : Unit = runBlocking {
+        val storage = InMemoryPlaybackEventStorage()
+        storage.upsert(PendingPlaybackEvent("ev-good", "trk_good", "2026-11-28T00:00:00Z", 60))
+        storage.upsert(PendingPlaybackEvent("ev-poison", "trk_poison", "2026-11-28T00:01:00Z", 45))
+
+        var calls = 0
+        val client = fakeClient { rpcName, bodyJson ->
+            assertEquals("ingest_playback_events", rpcName)
+            calls++
+            when {
+                bodyJson.contains("ev-good") && bodyJson.contains("ev-poison") ->
+                    FakeRpcResponse(httpStatus = 400, body = """{"message":"bad batch"}""")
+                bodyJson.contains("ev-poison") ->
+                    FakeRpcResponse(httpStatus = 400, body = """{"message":"bad item"}""")
+                else ->
+                    FakeRpcResponse(
+                        httpStatus = 200,
+                        body = """{"status":"OK","results":[{"client_event_id":"ev-good","status":"inserted","accepted_duration_sec":60}]}""",
+                    )
+            }
+        }
+        val pipeline = PlaybackEventPipeline(storage, client)
+        val outcome = pipeline.flushPending("dev1", nowMs = 10_000L)
+
+        assertTrue(outcome is PlaybackFlushOutcome.Flushed)
+        assertEquals(1, outcome.acked)
+        assertEquals(1, outcome.rejected)
+        assertEquals(3, calls)
+        assertEquals(PlaybackQueueState.ACKED, storage.getById("ev-good")?.state)
+        assertEquals(null, storage.getById("ev-poison"))
+    }
 }
