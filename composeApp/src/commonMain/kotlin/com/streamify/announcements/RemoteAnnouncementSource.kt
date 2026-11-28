@@ -15,7 +15,8 @@ import kotlinx.serialization.json.Json
 data class RemoteManifestResult(
     val popupModalEnabled: Boolean,
     val announcements: List<Announcement>,
-    val governance: GovernanceConfig = GovernanceConfig()
+    val governance: GovernanceConfig = GovernanceConfig(),
+    val revokedIds: List<String> = emptyList(),
 )
 
 /**
@@ -120,7 +121,8 @@ class RemoteAnnouncementSource(
             RemoteManifestResult(
                 popupModalEnabled = manifest.popupModalEnabled,
                 announcements = safeAnnouncements,
-                governance = manifest.governance
+                governance = manifest.governance,
+                revokedIds = manifest.revokedIds,
             )
         } catch (_: Exception) {
             // Fail-safe to cache or disabled state on any failure
@@ -140,7 +142,7 @@ class RemoteAnnouncementSource(
                 val manifest = json.decodeFromString<SignedManifest>(raw)
                 val revokedSet = manifest.revokedIds.toSet()
                 val safe = manifest.announcements.filterNot { it.id in revokedSet }
-                RemoteManifestResult(manifest.popupModalEnabled, safe, manifest.governance)
+                RemoteManifestResult(manifest.popupModalEnabled, safe, manifest.governance, manifest.revokedIds)
             } else {
                 RemoteManifestResult(popupModalEnabled = cachedEnabled, announcements = emptyList(), governance = GovernanceConfig())
             }
