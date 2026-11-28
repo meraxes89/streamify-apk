@@ -1,16 +1,14 @@
 package com.streamify.sync.v5
 
 import com.streamify.supabase.v5.PlaneCPresenceClient
-import com.streamify.supabase.v5.RpcHttpTransport
 import com.streamify.supabase.v5.RpcResult
-import com.streamify.supabase.v5.RpcTransportResponse
 import com.streamify.supabase.v5.SupabaseRpcExecutor
 import com.streamify.sync.v5.planec.DeviceMetadata
 import com.streamify.sync.v5.planec.DeviceSessionRegistrar
 import com.streamify.sync.v5.planec.PlaybackLeaseSnapshot
 import com.streamify.sync.v5.planec.PresenceLeaseClient
 import com.streamify.sync.v5.planec.PresenceLeaseState
-import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -20,31 +18,20 @@ import kotlin.test.assertTrue
 class PlaneCV5Test {
 
     private fun fakeClient(
-        handler: suspend (rpcName: String, bodyJson: String) -> RpcTransportResponse,
+        handler: suspend (rpcName: String, bodyJson: String) -> FakeRpcResponse,
     ): Pair<SupabaseRpcExecutor, PlaneCPresenceClient> {
-        val transport = object : RpcHttpTransport {
-            override suspend fun postRpc(
-                rpcName: String,
-                bodyJson: String,
-                accessToken: String,
-            ): RpcTransportResponse = handler(rpcName, bodyJson)
-        }
-        val executor = SupabaseRpcExecutor(
-            transport = transport,
-            accessTokenProvider = { "token" },
-            refreshSession = { true },
-        )
+        val executor = FakeRpcExecutor(handler)
         return executor to PlaneCPresenceClient(executor)
     }
 
     @Test
-    fun deviceSessionRegistrarThrottlesForSixHoursAndRefreshesOnVersionChange() = runTest {
+    fun deviceSessionRegistrarThrottlesForSixHoursAndRefreshesOnVersionChange() : Unit = runBlocking {
         var now = 1_000L
         var calls = 0
         val (_, client) = fakeClient { rpcName, _ ->
             assertEquals("record_device_session", rpcName)
             calls++
-            RpcTransportResponse(200, """{"status":"OK","device_id":"dev-1","platform":"android"}""")
+            FakeRpcResponse(200, """{"status":"OK","device_id":"dev-1","platform":"android"}""")
         }
         val registrar = DeviceSessionRegistrar(client) { now }
         val metaV1 = DeviceMetadata("dev-1", "Pixel", "android", appVersion = "5.0.0", versionCode = 500)
@@ -65,14 +52,14 @@ class PlaneCV5Test {
     }
 
     @Test
-    fun presenceLeaseTransitionsAndDeadReckonsPosition() = runTest {
+    fun presenceLeaseTransitionsAndDeadReckonsPosition() : Unit = runBlocking {
         val (_, client) = fakeClient { rpcName, _ ->
             when (rpcName) {
-                "heartbeat_presence_v2" -> RpcTransportResponse(
+                "heartbeat_presence_v2" -> FakeRpcResponse(
                     200,
                     """{"status":"OK","state_seq":"1","expires_at":"2026-11-28T00:42:25Z"}""",
                 )
-                "stop_presence" -> RpcTransportResponse(
+                "stop_presence" -> FakeRpcResponse(
                     200,
                     """{"status":"OK","handoff_saved":true}""",
                 )

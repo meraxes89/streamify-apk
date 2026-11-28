@@ -4,9 +4,6 @@ import com.streamify.supabase.v5.PlaneAStateSyncClient
 import com.streamify.supabase.v5.PlaneBEventClient
 import com.streamify.supabase.v5.PlaneCPresenceClient
 import com.streamify.supabase.v5.PlaneDCatalogClient
-import com.streamify.supabase.v5.RpcHttpTransport
-import com.streamify.supabase.v5.RpcTransportResponse
-import com.streamify.supabase.v5.SupabaseRpcExecutor
 import com.streamify.sync.v5.planea.BootstrapCoordinator
 import com.streamify.sync.v5.planea.DeltaReplicator
 import com.streamify.sync.v5.planea.EntityApplierRegistry
@@ -27,7 +24,7 @@ import com.streamify.sync.v5.planed.CatalogHydrationCoordinator
 import com.streamify.sync.v5.planed.InMemorySongCatalogStore
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
-import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -36,7 +33,7 @@ import kotlin.test.assertTrue
 class PlaneEV5Test {
 
     @Test
-    fun settingsObserverSuppressesExactRemoteEchoOnly() = runTest {
+    fun settingsObserverSuppressesExactRemoteEchoOnly() : Unit = runBlocking {
         val store = InMemorySyncV5Store()
         val observer = SettingsSyncObserver(store) { "dev-1" }
 
@@ -50,7 +47,7 @@ class PlaneEV5Test {
     }
 
     @Test
-    fun coreSyncBridgeDrainsAndClearsCoreSource() = runTest {
+    fun coreSyncBridgeDrainsAndClearsCoreSource() : Unit = runBlocking {
         val store = InMemorySyncV5Store()
         val coreRows = mutableListOf(
             CorePendingMutation(1L, "like", "yt:abc", "I", """{"track_id":"yt:abc"}"""),
@@ -82,36 +79,29 @@ class PlaneEV5Test {
     }
 
     @Test
-    fun slowPlaneABootstrapNeverBlocksPlaneCHeartbeatOrPlaneBFlush() = runTest {
+    fun slowPlaneABootstrapNeverBlocksPlaneCHeartbeatOrPlaneBFlush() : Unit = runBlocking {
         val planeABlocked = CompletableDeferred<Unit>()
         val planeAResumed = CompletableDeferred<Unit>()
 
-        val transport = object : RpcHttpTransport {
-            override suspend fun postRpc(
-                rpcName: String,
-                bodyJson: String,
-                accessToken: String,
-            ): RpcTransportResponse {
-                return when (rpcName) {
-                    "sync_bootstrap_v5" -> {
-                        planeABlocked.complete(Unit)
-                        planeAResumed.await()
-                        RpcTransportResponse(
-                            200,
-                            """{"protocol_version":5,"status":"OK","snapshot_rev":"1","has_more":false,"rows":[]}""",
-                        )
-                    }
-                    "record_device_session" -> RpcTransportResponse(200, """{"status":"OK","device_id":"dev-1","platform":"android"}""")
-                    "heartbeat_presence_v2" -> RpcTransportResponse(200, """{"status":"OK","state_seq":"1"}""")
-                    "ingest_playback_events" -> RpcTransportResponse(
+        val executor = FakeRpcExecutor { rpcName, _ ->
+            when (rpcName) {
+                "sync_bootstrap_v5" -> {
+                    planeABlocked.complete(Unit)
+                    planeAResumed.await()
+                    FakeRpcResponse(
                         200,
-                        """{"status":"OK","results":[{"client_event_id":"e1","status":"inserted","accepted_duration_sec":30}]}""",
+                        """{"protocol_version":5,"status":"OK","snapshot_rev":"1","has_more":false,"rows":[]}""",
                     )
-                    else -> RpcTransportResponse(200, """{"status":"OK"}""")
                 }
+                "record_device_session" -> FakeRpcResponse(200, """{"status":"OK","device_id":"dev-1","platform":"android"}""")
+                "heartbeat_presence_v2" -> FakeRpcResponse(200, """{"status":"OK","state_seq":"1"}""")
+                "ingest_playback_events" -> FakeRpcResponse(
+                    200,
+                    """{"status":"OK","results":[{"client_event_id":"e1","status":"inserted","accepted_duration_sec":30}]}""",
+                )
+                else -> FakeRpcResponse(200, """{"status":"OK"}""")
             }
         }
-        val executor = SupabaseRpcExecutor(transport, { "tok" }, { true })
         val store = InMemorySyncV5Store()
         val guard = createPlatformSyncWriteGuard()
         val lifecycle = DefaultSyncSessionLifecycle(store, guard)
@@ -119,8 +109,8 @@ class PlaneEV5Test {
         val planeA = PlaneAStateSyncCoordinator(
             store = store,
             outboxProcessor = SyncOutboxProcessor(store, planeAClient),
-            deltaReplicator = DeltaReplicator(store, planeAClient, guard, EntityApplierRegistry(emptyList())),
-            bootstrapCoordinator = BootstrapCoordinator(store, planeAClient, guard, EntityApplierRegistry(emptyList())),
+            deltaReplicator = DeltaReplicator(store, planeAClient, EntityApplierRegistry(emptyList()), guard),
+            bootstrapCoordinator = BootstrapCoordinator(store, planeAClient, EntityApplierRegistry(emptyList()), guard),
         )
         val playbackStorage = InMemoryPlaybackEventStorage().apply {
             upsert(PendingPlaybackEvent("e1", "yt:abc", "2026-11-28T00:00:00Z", 30))

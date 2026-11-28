@@ -1,7 +1,7 @@
 package com.streamify.sync.v5
 
 import com.streamify.sync.HybridLogicalClock
-import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -28,7 +28,7 @@ class PlaneAV5Test {
     }
 
     @Test
-    fun outboxCoalescesPendingOnlyAndIsolatesDeadLetters() = runTest {
+    fun outboxCoalescesPendingOnlyAndIsolatesDeadLetters() : Unit = runBlocking {
         val store = InMemorySyncV5Store()
         store.enqueueOrCoalesce(
             SyncOutboxRow("m1", "user_like", "trk_1", "upsert", 100L, "dev1", """{"track_id":"trk_1"}"""),
@@ -48,7 +48,7 @@ class PlaneAV5Test {
     }
 
     @Test
-    fun sessionLifecycleWipesStoreOnAccountSwitchAndFencesBackup() = runTest {
+    fun sessionLifecycleWipesStoreOnAccountSwitchAndFencesBackup() : Unit = runBlocking {
         val store = InMemorySyncV5Store()
         val guard = createPlatformSyncWriteGuard()
         val lifecycle = DefaultSyncSessionLifecycle(store, guard)

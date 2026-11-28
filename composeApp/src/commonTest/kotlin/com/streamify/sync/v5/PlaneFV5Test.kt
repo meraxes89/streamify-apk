@@ -5,7 +5,7 @@ import com.streamify.sync.v5.planef.PeerLibraryPayload
 import com.streamify.sync.v5.planef.PeerLocalStorage
 import com.streamify.sync.v5.planef.PeerPlaylistItem
 import com.streamify.sync.v5.planef.PeerTransferMode
-import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -35,7 +35,7 @@ class PlaneFV5Test {
     }
 
     @Test
-    fun sameAccountHydrationProducesZeroOutboxWrites() = runTest {
+    fun sameAccountHydrationProducesZeroOutboxWrites() : Unit = runBlocking {
         val store = InMemorySyncV5Store()
         val guard = createPlatformSyncWriteGuard()
         val lifecycle = DefaultSyncSessionLifecycle(store, guard)
@@ -65,7 +65,7 @@ class PlaneFV5Test {
     }
 
     @Test
-    fun crossAccountCloneRemapsPlaylistUuidsAndStripsIdentityKeys() = runTest {
+    fun crossAccountCloneRemapsPlaylistUuidsAndStripsIdentityKeys() : Unit = runBlocking {
         val store = InMemorySyncV5Store()
         val guard = createPlatformSyncWriteGuard()
         val lifecycle = DefaultSyncSessionLifecycle(store, guard)
