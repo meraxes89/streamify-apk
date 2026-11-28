@@ -69,9 +69,8 @@ class PlaneAV5Test {
         assertEquals(0, store.pendingCount())
         assertNull(store.getCheckpoint("user-a"))
 
-        var insideRemoteApply = false
-        lifecycle.withBackupRestoreFence {
-            insideRemoteApply = guard.isRemoteApplying()
+        val insideRemoteApply = lifecycle.withBackupRestoreFence {
+            guard.isRemoteApplying()
         }
         assertTrue(insideRemoteApply)
         assertFalse(guard.isRemoteApplying())

@@ -76,7 +76,13 @@ class PlaneAStateSyncCoordinator(
 
         _status.value = _status.value.copy(fsmState = PlaneAFsmState.PUSHING, lastError = null)
         when (val push = outboxProcessor.pushPending(userId, deviceId, checkpoint.pullCursorRev)) {
-            is PushOutcome.Completed -> Unit
+            is PushOutcome.Completed -> {
+                if (push.pushedCount > 0) {
+                    val advancedHlc = maxOf(checkpoint.lastHlc, HybridLogicalClock.now())
+                    checkpoint = checkpoint.copy(lastHlc = advancedHlc)
+                    store.saveCheckpoint(checkpoint)
+                }
+            }
             is PushOutcome.ClockSkewBlocked -> {
                 _status.value = _status.value.copy(
                     fsmState = PlaneAFsmState.CLOCK_SKEW_BLOCKED,

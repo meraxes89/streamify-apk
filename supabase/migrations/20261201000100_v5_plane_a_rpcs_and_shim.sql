@@ -24,7 +24,7 @@ $$;
 CREATE OR REPLACE FUNCTION public._v5_try_parse_timestamptz(p_val TEXT)
 RETURNS TIMESTAMPTZ
 LANGUAGE plpgsql
-IMMUTABLE
+STABLE
 AS $$
 BEGIN
     IF p_val IS NULL OR btrim(p_val) = '' THEN
