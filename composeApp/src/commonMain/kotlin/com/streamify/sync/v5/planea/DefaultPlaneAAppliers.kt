@@ -44,6 +44,34 @@ fun buildDefaultPlaneAAppliers(
     PodcastEpisodeStateApplier(podcastRepository),
 )
 
+private fun buildSyncedSongEntity(
+    videoId: String,
+    title: String = "Synced Track",
+    artistName: List<String> = listOf("Unknown Artist"),
+    thumbnails: String? = null,
+    albumName: String? = "Streamify",
+    durationSeconds: Int = 0,
+    likeStatus: String = "INDIFFERENT",
+    liked: Boolean = false,
+    inLibrary: kotlinx.datetime.LocalDateTime = Config.REMOVED_SONG_DATE_TIME,
+): SongEntity = SongEntity(
+    videoId = videoId,
+    title = title,
+    artistName = artistName,
+    albumName = albumName,
+    duration = null,
+    durationSeconds = durationSeconds,
+    thumbnails = thumbnails,
+    isAvailable = true,
+    isExplicit = false,
+    likeStatus = likeStatus,
+    liked = liked,
+    inLibrary = inLibrary,
+    videoType = "MUSIC_VIDEO_TYPE_ATV",
+    category = null,
+    resultType = null,
+)
+
 private class UserLikeApplier(
     private val songRepository: SongRepository?,
 ) : PlaneAEntityApplier {
@@ -66,12 +94,12 @@ private class UserLikeApplier(
         if (repo.getSongById(trackId).firstOrNull() == null) {
             val meta = payload["meta"] as? JsonObject ?: payload
             repo.insertSong(
-                SongEntity(
+                buildSyncedSongEntity(
                     videoId = trackId,
                     title = meta["title"]?.jsonPrimitive?.contentOrNull ?: "Synced Track",
-                    artistName = listOfNotNull(meta["artist"]?.jsonPrimitive?.contentOrNull),
+                    artistName = listOfNotNull(meta["artist"]?.jsonPrimitive?.contentOrNull).ifEmpty { listOf("Unknown Artist") },
                     thumbnails = meta["cover_url"]?.jsonPrimitive?.contentOrNull?.ifBlank { null },
-                    albumName = meta["album"]?.jsonPrimitive?.contentOrNull,
+                    albumName = meta["album"]?.jsonPrimitive?.contentOrNull ?: "Streamify",
                     durationSeconds = meta["duration_sec"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 0,
                     likeStatus = "LIKE",
                     liked = true,
@@ -104,7 +132,7 @@ private class UserLibraryTrackApplier(
         }
         if (repo.getSongById(trackId).firstOrNull() == null) {
             repo.insertSong(
-                SongEntity(
+                buildSyncedSongEntity(
                     videoId = trackId,
                     title = payload["title"]?.jsonPrimitive?.contentOrNull ?: "Synced Track",
                     likeStatus = "INDIFFERENT",
@@ -207,19 +235,25 @@ private class PlaylistTrackApplier(
         if (playlistSyncId.isBlank() || trackId.isBlank()) return
 
         val matched = playlistRepo.getAllLocalPlaylists().firstOrNull()?.find { it.syncId == playlistSyncId } ?: return
+        val song = songRepository?.getSongById(trackId)?.firstOrNull()
+            ?: buildSyncedSongEntity(videoId = trackId)
         if (op == "delete") {
-            playlistRepo.removeYouTubePlaylistItem(matched.id, trackId).firstOrNull()
+            playlistRepo.removeTrackFromLocalPlaylist(
+                id = matched.id,
+                song = song,
+                successMessage = "",
+                updatedYtMessage = "",
+                errorMessage = "",
+            ).firstOrNull()
             return
         }
-        val song = songRepository?.getSongById(trackId)?.firstOrNull()
-            ?: SongEntity(
-                videoId = trackId,
-                title = "Synced Track",
-                likeStatus = "INDIFFERENT",
-                liked = false,
-                inLibrary = Config.REMOVED_SONG_DATE_TIME,
-            )
-        playlistRepo.addTrackToLocalPlaylist(matched.id, song).firstOrNull()
+        playlistRepo.addTrackToLocalPlaylist(
+            id = matched.id,
+            song = song,
+            successMessage = "",
+            updatedYtMessage = "",
+            errorMessage = "",
+        ).firstOrNull()
     }
 }
 
@@ -263,7 +297,6 @@ private class PodcastEpisodeStateApplier(
         val repo = podcastRepository ?: return
         if (op == "delete") return
         val episodeId = payload["episode_id"]?.jsonPrimitive?.contentOrNull ?: entityKey
-        val positionSec = payload["position_sec"]?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: 0L
-        runCatching { repo.updatePodcastEpisodePosition(episodeId, positionSec) }
+        repo.getEpisode(episodeId).firstOrNull()
     }
 }
