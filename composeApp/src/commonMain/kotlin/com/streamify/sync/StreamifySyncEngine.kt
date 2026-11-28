@@ -254,7 +254,7 @@ object StreamifySyncEngine : KoinComponent {
         }
     }
 
-    private suspend fun getOrCreateDeviceId(): String = deviceIdMutex.withLock {
+    suspend fun getOrCreateDeviceId(): String = deviceIdMutex.withLock {
         val existing = dataStoreManager.getString("streamify_device_id_v3").firstOrNull()
         if (!existing.isNullOrBlank()) {
             return@withLock existing

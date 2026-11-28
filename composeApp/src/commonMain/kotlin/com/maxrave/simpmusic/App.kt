@@ -675,13 +675,30 @@ fun App(
             com.maxrave.simpmusic.data.RemoteGreetingManager.syncRemoteConfig()
         }
         LaunchedEffect(streamifyAuthState) {
+            val v5Coordinator = org.koin.mp.KoinPlatform.getKoin().getOrNull<com.streamify.sync.v5.SyncCoordinator>()
             when (val auth = streamifyAuthState) {
                 is AuthState.Authenticated -> {
                     com.streamify.sync.StreamifySyncEngine.onAuthenticatedUser(auth.user.id)
                     com.streamify.sync.StreamifySyncEngine.triggerSync(auth.user.id)
+                    if (v5Coordinator != null) {
+                        val info = com.streamify.supabase.resolvePlatformDeviceInfo()
+                        val deviceId = com.streamify.sync.StreamifySyncEngine.getOrCreateDeviceId()
+                        v5Coordinator.onAccountAuthenticated(
+                            userId = auth.user.id,
+                            deviceMeta = com.streamify.sync.v5.planec.DeviceMetadata(
+                                deviceId = deviceId,
+                                deviceName = info.deviceModel,
+                                platform = info.platform,
+                                appVersion = com.maxrave.simpmusic.BuildKonfig.versionName,
+                                versionCode = 0,
+                            ),
+                        )
+                        v5Coordinator.triggerPlaneASync(deviceId)
+                    }
                 }
                 is AuthState.Unauthenticated -> {
                     com.streamify.sync.StreamifySyncEngine.resetForAccountSwitch()
+                    v5Coordinator?.onAccountSignedOut(com.streamify.sync.v5.SignOutReason.USER_LOGOUT)
                 }
                 else -> Unit
             }

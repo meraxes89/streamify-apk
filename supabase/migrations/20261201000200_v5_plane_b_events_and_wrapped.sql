@@ -100,6 +100,9 @@ CREATE TABLE IF NOT EXISTS public.user_listening_daily (
 );
 
 -- 5. Copy all active live listening history rows (mapping created_at -> played_at, title -> track_title)
+ALTER TABLE public.user_listening_history
+    ADD COLUMN IF NOT EXISTS modified_by TEXT;
+
 INSERT INTO public.user_listening_history_v2 (
     user_id, client_event_id, track_id, played_at,
     listened_duration_sec, track_duration_sec, play_counted,

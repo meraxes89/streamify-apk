@@ -24,6 +24,7 @@ class SyncOutboxProcessor(
     private val client: PlaneAStateSyncClient,
     private val json: Json = Json { ignoreUnknownKeys = true },
     private val isParentTombstonedLocally: suspend (entityKey: String) -> Boolean = { false },
+    private val onMutationsAcked: suspend (List<String>) -> Unit = {},
 ) {
     suspend fun pushPending(
         userId: String,
@@ -96,6 +97,7 @@ class SyncOutboxProcessor(
 
                     if (sentIds.isNotEmpty()) {
                         store.markSent(sentIds, ackHlc)
+                        onMutationsAcked(sentIds)
                         totalPushed += sentIds.size
                     }
                     if (revertIds.isNotEmpty()) {

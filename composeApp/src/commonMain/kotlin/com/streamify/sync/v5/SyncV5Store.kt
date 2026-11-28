@@ -1,11 +1,16 @@
 package com.streamify.sync.v5
 
+import com.streamify.supabase.v5.LongAsStringSerializer
 import com.streamify.sync.HybridLogicalClock
 import com.streamify.sync.synchronizedLock
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 enum class OutboxStatus {
     PENDING,
@@ -225,5 +230,226 @@ class InMemorySyncV5Store : SyncV5Store {
             count = dlq.size,
             latestErrorCode = dlq.maxByOrNull { it.hlc }?.lastErrorCode,
         )
+    }
+
+    internal fun exportSnapshot(): PersistedV5StoreSnapshot = synchronizedLock(lock) {
+        PersistedV5StoreSnapshot(
+            rows = rows.values.map {
+                PersistedV5OutboxRow(
+                    mutationId = it.mutationId,
+                    entityType = it.entityType,
+                    entityKey = it.entityKey,
+                    op = it.op,
+                    hlc = it.hlc,
+                    deviceId = it.deviceId,
+                    payloadJson = it.payloadJson,
+                    status = it.status.name,
+                    attemptCount = it.attemptCount,
+                    lastErrorCode = it.lastErrorCode,
+                    lastErrorDetail = it.lastErrorDetail,
+                )
+            },
+            checkpoints = checkpoints.mapValues { (_, cp) ->
+                PersistedV5Checkpoint(
+                    userId = cp.userId,
+                    deviceId = cp.deviceId,
+                    pullCursorRev = cp.pullCursorRev,
+                    lastHlc = cp.lastHlc,
+                    bootstrapComplete = cp.bootstrapComplete,
+                    lastSyncedAtMs = cp.lastSyncedAtMs,
+                )
+            },
+        )
+    }
+
+    internal fun importSnapshot(snapshot: PersistedV5StoreSnapshot) = synchronizedLock(lock) {
+        rows.clear()
+        for (r in snapshot.rows) {
+            val status = runCatching { OutboxStatus.valueOf(r.status) }.getOrDefault(OutboxStatus.PENDING)
+            rows[r.mutationId] = SyncOutboxRow(
+                mutationId = r.mutationId,
+                entityType = r.entityType,
+                entityKey = r.entityKey,
+                op = r.op,
+                hlc = r.hlc,
+                deviceId = r.deviceId,
+                payloadJson = r.payloadJson,
+                status = status,
+                attemptCount = r.attemptCount,
+                lastErrorCode = r.lastErrorCode,
+                lastErrorDetail = r.lastErrorDetail,
+            )
+        }
+        checkpoints.clear()
+        for ((uid, cp) in snapshot.checkpoints) {
+            checkpoints[uid] = SyncCheckpointRow(
+                userId = cp.userId,
+                deviceId = cp.deviceId,
+                pullCursorRev = cp.pullCursorRev,
+                lastHlc = cp.lastHlc,
+                bootstrapComplete = cp.bootstrapComplete,
+                lastSyncedAtMs = cp.lastSyncedAtMs,
+            )
+        }
+        refreshDlqSummaryLocked()
+    }
+}
+
+@Serializable
+internal data class PersistedV5OutboxRow(
+    val mutationId: String,
+    val entityType: String,
+    val entityKey: String,
+    val op: String,
+    @Serializable(with = LongAsStringSerializer::class)
+    val hlc: Long,
+    val deviceId: String,
+    val payloadJson: String,
+    val status: String,
+    val attemptCount: Int = 0,
+    val lastErrorCode: String? = null,
+    val lastErrorDetail: String? = null,
+)
+
+@Serializable
+internal data class PersistedV5Checkpoint(
+    val userId: String,
+    val deviceId: String,
+    @Serializable(with = LongAsStringSerializer::class)
+    val pullCursorRev: Long = 0L,
+    @Serializable(with = LongAsStringSerializer::class)
+    val lastHlc: Long = 0L,
+    val bootstrapComplete: Boolean = false,
+    @Serializable(with = LongAsStringSerializer::class)
+    val lastSyncedAtMs: Long = 0L,
+)
+
+@Serializable
+internal data class PersistedV5StoreSnapshot(
+    val rows: List<PersistedV5OutboxRow> = emptyList(),
+    val checkpoints: Map<String, PersistedV5Checkpoint> = emptyMap(),
+)
+
+/**
+ * Durable JSON-backed [SyncV5Store] for DataStoreManager (Android/JVM/iOS/Wasm) and
+ * `window.localStorage` (standalone Wasm). Uses [LongAsStringSerializer] for 64-bit safety.
+ */
+class DataStoreSyncV5Store(
+    private val readSnapshot: suspend () -> String?,
+    private val writeSnapshot: suspend (String) -> Unit,
+    private val json: Json = Json { ignoreUnknownKeys = true; encodeDefaults = true },
+) : SyncV5Store {
+    private val mutex = Mutex()
+    private val delegate = InMemorySyncV5Store()
+    private var loaded = false
+
+    private suspend fun ensureLoadedLocked() {
+        if (loaded) return
+        loaded = true
+        val raw = runCatching { readSnapshot() }.getOrNull()?.takeIf { it.isNotBlank() } ?: return
+        runCatching { json.decodeFromString<PersistedV5StoreSnapshot>(raw) }
+            .onSuccess { delegate.importSnapshot(it) }
+    }
+
+    private suspend fun persistLocked() {
+        val encoded = json.encodeToString(delegate.exportSnapshot())
+        runCatching { writeSnapshot(encoded) }
+    }
+
+    override suspend fun enqueueOrCoalesce(row: SyncOutboxRow) = mutex.withLock {
+        ensureLoadedLocked()
+        delegate.enqueueOrCoalesce(row)
+        persistLocked()
+    }
+
+    override suspend fun claimPendingBatch(limit: Int): List<SyncOutboxRow> = mutex.withLock {
+        ensureLoadedLocked()
+        val claimed = delegate.claimPendingBatch(limit)
+        if (claimed.isNotEmpty()) persistLocked()
+        claimed
+    }
+
+    override suspend fun markSent(mutationIds: List<String>, sentAtHlc: Long) = mutex.withLock {
+        ensureLoadedLocked()
+        delegate.markSent(mutationIds, sentAtHlc)
+        if (mutationIds.isNotEmpty()) persistLocked()
+    }
+
+    override suspend fun revertInFlightToPending(mutationIds: List<String>) = mutex.withLock {
+        ensureLoadedLocked()
+        delegate.revertInFlightToPending(mutationIds)
+        if (mutationIds.isNotEmpty()) persistLocked()
+    }
+
+    override suspend fun moveToDeadLetter(
+        mutationId: String,
+        errorCode: String,
+        errorDetail: String,
+        failedAtHlc: Long,
+    ) = mutex.withLock {
+        ensureLoadedLocked()
+        delegate.moveToDeadLetter(mutationId, errorCode, errorDetail, failedAtHlc)
+        persistLocked()
+    }
+
+    override suspend fun resetInFlightToPending(): Int = mutex.withLock {
+        ensureLoadedLocked()
+        val count = delegate.resetInFlightToPending()
+        if (count > 0) persistLocked()
+        count
+    }
+
+    override suspend fun pruneSentOlderThan(cutoffHlc: Long): Int = mutex.withLock {
+        ensureLoadedLocked()
+        val count = delegate.pruneSentOlderThan(cutoffHlc)
+        if (count > 0) persistLocked()
+        count
+    }
+
+    override suspend fun hasPendingOrInFlight(entityType: String, entityKey: String): Boolean = mutex.withLock {
+        ensureLoadedLocked()
+        delegate.hasPendingOrInFlight(entityType, entityKey)
+    }
+
+    override suspend fun pendingCount(): Int = mutex.withLock {
+        ensureLoadedLocked()
+        delegate.pendingCount()
+    }
+
+    override fun observeDeadLetterSummary(): Flow<DeadLetterSummary> = delegate.observeDeadLetterSummary()
+
+    override suspend fun listDeadLetters(limit: Int): List<SyncOutboxRow> = mutex.withLock {
+        ensureLoadedLocked()
+        delegate.listDeadLetters(limit)
+    }
+
+    override suspend fun retryDeadLetter(mutationId: String, newHlc: Long) = mutex.withLock {
+        ensureLoadedLocked()
+        delegate.retryDeadLetter(mutationId, newHlc)
+        persistLocked()
+    }
+
+    override suspend fun purgeDeadLetters(): Int = mutex.withLock {
+        ensureLoadedLocked()
+        val count = delegate.purgeDeadLetters()
+        if (count > 0) persistLocked()
+        count
+    }
+
+    override suspend fun getCheckpoint(userId: String): SyncCheckpointRow? = mutex.withLock {
+        ensureLoadedLocked()
+        delegate.getCheckpoint(userId)
+    }
+
+    override suspend fun saveCheckpoint(checkpoint: SyncCheckpointRow) = mutex.withLock {
+        ensureLoadedLocked()
+        delegate.saveCheckpoint(checkpoint)
+        persistLocked()
+    }
+
+    override suspend fun wipeAllForAccountSwitch() = mutex.withLock {
+        ensureLoadedLocked()
+        delegate.wipeAllForAccountSwitch()
+        runCatching { writeSnapshot("") }
     }
 }

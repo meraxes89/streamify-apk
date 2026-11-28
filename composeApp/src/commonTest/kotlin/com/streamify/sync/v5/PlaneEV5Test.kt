@@ -71,8 +71,13 @@ class PlaneEV5Test {
 
         val drained = bridge.drainCoreMutationsIntoV5()
         assertEquals(2, drained)
-        assertTrue(coreRows.isEmpty())
+        // Core rows remain until server acks them (P0-6 zero-data-loss guarantee)
+        assertEquals(2, coreRows.size)
         assertEquals(2, store.pendingCount())
+
+        val claimed = store.claimPendingBatch(10)
+        bridge.onMutationsAcked(claimed.map { it.mutationId })
+        assertTrue(coreRows.isEmpty())
 
         bridge.clearAll()
         assertTrue(cleared)

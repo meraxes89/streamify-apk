@@ -5,7 +5,10 @@
 
 BEGIN;
 
--- 1. Sync Infrastructure Tables
+-- 1. Sync Infrastructure Tables & Missing Legacy Columns
+ALTER TABLE public.user_settings
+    ADD COLUMN IF NOT EXISTS key_hlcs JSONB NOT NULL DEFAULT '{}'::jsonb;
+
 CREATE TABLE IF NOT EXISTS public.user_sync_state (
     user_id            UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     head_rev           BIGINT NOT NULL DEFAULT 0 CHECK (head_rev >= 0),

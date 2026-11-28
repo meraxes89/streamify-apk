@@ -1,6 +1,8 @@
 package com.streamify.sync.v5
 
 import com.streamify.sync.HybridLogicalClock
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -10,6 +12,7 @@ data class CorePendingMutation(
     val entityKey: String,
     val op: String,
     val payloadJson: String,
+    val coreChangeId: String = coreRowId.toString(),
 )
 
 interface CoreSyncSource {
@@ -27,19 +30,25 @@ class CoreSyncBridge(
     private val store: SyncV5Store,
     private val deviceIdProvider: () -> String,
 ) {
+    private val mutex = Mutex()
+    private val pendingCoreRowIds = linkedMapOf<String, Long>()
+
     @OptIn(ExperimentalUuidApi::class)
-    suspend fun drainCoreMutationsIntoV5(limit: Int = 200): Int {
+    suspend fun drainCoreMutationsIntoV5(limit: Int = 200): Int = mutex.withLock {
         val rows = coreSource.readPendingBatch(limit)
-        if (rows.isEmpty()) return 0
+        if (rows.isEmpty()) return@withLock 0
 
         val deviceId = deviceIdProvider()
-        val consumedIds = mutableListOf<Long>()
+        val alreadyDrainedRowIds = pendingCoreRowIds.values.toHashSet()
+        var enqueued = 0
         for (row in rows) {
+            if (row.coreRowId in alreadyDrainedRowIds) continue
             val normalizedType = mapLegacyEntityType(row.entityType) ?: continue
             val normalizedOp = if (row.op in setOf("D", "delete")) "delete" else "upsert"
+            val mutationId = Uuid.random().toString()
             store.enqueueOrCoalesce(
                 SyncOutboxRow(
-                    mutationId = Uuid.random().toString(),
+                    mutationId = mutationId,
                     entityType = normalizedType,
                     entityKey = row.entityKey,
                     op = normalizedOp,
@@ -48,15 +57,27 @@ class CoreSyncBridge(
                     payloadJson = row.payloadJson,
                 )
             )
-            consumedIds += row.coreRowId
+            pendingCoreRowIds[mutationId] = row.coreRowId
+            enqueued++
         }
-        if (consumedIds.isNotEmpty()) {
-            coreSource.deleteConsumed(consumedIds)
+        enqueued
+    }
+
+    /**
+     * Deletes drained `core/` outbox rows only after [SyncOutboxProcessor] receives server acks.
+     */
+    suspend fun onMutationsAcked(mutationIds: List<String>) {
+        if (mutationIds.isEmpty()) return
+        val ackedRowIds = mutex.withLock {
+            mutationIds.mapNotNull { pendingCoreRowIds.remove(it) }
         }
-        return consumedIds.size
+        if (ackedRowIds.isNotEmpty()) {
+            coreSource.deleteConsumed(ackedRowIds)
+        }
     }
 
     suspend fun clearAll() {
+        mutex.withLock { pendingCoreRowIds.clear() }
         coreSource.clearAll()
     }
 
