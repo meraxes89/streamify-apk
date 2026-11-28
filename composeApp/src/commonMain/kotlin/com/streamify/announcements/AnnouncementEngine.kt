@@ -36,7 +36,8 @@ class AnnouncementEngine(
         currentVersion: String,
         currentPlatform: String,
         currentLocale: String,
-        uiContext: UiContext
+        uiContext: UiContext,
+        profile: UserProfileContext = UserProfileContext(),
     ) {
         scope.launch {
             try {
@@ -51,26 +52,60 @@ class AnnouncementEngine(
                 if (!manifestResult.popupModalEnabled) {
                     arbiter.dismissActive()
                     if (manifestResult.announcements.isNotEmpty()) {
-                        inboxRepository.saveInboxAnnouncements(manifestResult.announcements)
+                        val eligibleInbox = manifestResult.announcements
+                            .filter { announcement ->
+                                TargetingEvaluator.isEligible(
+                                    announcement.targeting,
+                                    currentVersion,
+                                    currentPlatform,
+                                    currentLocale,
+                                    profile = profile,
+                                    announcementId = announcement.id,
+                                    nowEpochMs = nowEpochMs,
+                                )
+                            }
+                            .map { TargetingEvaluator.personalize(it, profile) }
+                        if (eligibleInbox.isNotEmpty()) {
+                            inboxRepository.saveInboxAnnouncements(eligibleInbox)
+                        }
                     }
                     return@launch
                 }
 
                 val combined = (LocalAnnouncementDefaults.ALL + manifestResult.announcements).distinctBy { it.id }
 
-                // Sync persistent inbox
-                inboxRepository.saveInboxAnnouncements(combined)
-
                 val eligible = combined.filter { announcement ->
                     TargetingEvaluator.isEligible(
                         announcement.targeting,
                         currentVersion,
                         currentPlatform,
-                        currentLocale
+                        currentLocale,
+                        profile = profile,
+                        announcementId = announcement.id,
+                        nowEpochMs = nowEpochMs,
                     ) && frequencyGovernor.isEligible(announcement, nowEpochMs, manifestResult.governance)
                 }.sortedByDescending { it.priority }
 
-                val topCandidate = eligible.firstOrNull() ?: return@launch
+                // Sync persistent inbox with eligible/targeted announcements (personalized)
+                val inboxItems = combined
+                    .filter { announcement ->
+                        TargetingEvaluator.isEligible(
+                            announcement.targeting,
+                            currentVersion,
+                            currentPlatform,
+                            currentLocale,
+                            profile = profile,
+                            announcementId = announcement.id,
+                            nowEpochMs = nowEpochMs,
+                        )
+                    }
+                    .map { TargetingEvaluator.personalize(it, profile) }
+                if (inboxItems.isNotEmpty()) {
+                    inboxRepository.saveInboxAnnouncements(inboxItems)
+                }
+
+                val topCandidate = eligible.firstOrNull()?.let { TargetingEvaluator.personalize(it, profile) }
+                    ?: return@launch
                 val presented = arbiter.tryPresent(topCandidate, uiContext)
                 if (presented) {
                     frequencyGovernor.recordShown(topCandidate, nowEpochMs)

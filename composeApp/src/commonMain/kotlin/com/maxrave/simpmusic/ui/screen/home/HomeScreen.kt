@@ -393,6 +393,7 @@ fun HomeScreen(
     }
     val announcementEngine: com.streamify.announcements.AnnouncementEngine = koinInject()
     val activeAnnouncement by announcementEngine.activeAnnouncement.collectAsStateWithLifecycle()
+    val currentSupabaseUser by com.streamify.supabase.SupabaseClient.currentUser.collectAsStateWithLifecycle()
     // Decided once per launch (saveable, so a rotation does not count as a new launch).
     var promoLaunchDecided by rememberSaveable {
         mutableStateOf(false)
@@ -479,11 +480,28 @@ fun HomeScreen(
             isModalActive = otherDialogOpen,
             isOnboarding = false
         )
+        val profileContext = com.streamify.announcements.UserProfileContext(
+            userId = currentSupabaseUser?.id?.takeIf { it.isNotBlank() },
+            displayName = currentSupabaseUser?.displayName?.takeIf { it.isNotBlank() },
+            isAdmin = currentSupabaseUser?.isAdmin == true,
+            totalPlays = currentSupabaseUser?.totalPlays ?: 0,
+            listeningSeconds = currentSupabaseUser?.listeningSeconds ?: 0L,
+            favoriteGenre = currentSupabaseUser?.favoriteGenre,
+            topTrack = currentSupabaseUser?.topTrack,
+            createdAtEpochMs = currentSupabaseUser?.createdAt?.takeIf { it.isNotBlank() }?.let { raw ->
+                runCatching { kotlin.time.Instant.parse(raw).toEpochMilliseconds() }.getOrNull()
+            },
+            lastActiveAtEpochMs = currentSupabaseUser?.lastActiveAt?.takeIf { it.isNotBlank() }?.let { raw ->
+                runCatching { kotlin.time.Instant.parse(raw).toEpochMilliseconds() }.getOrNull()
+            },
+            isAuthenticated = com.streamify.supabase.SupabaseClient.hasValidUserSession(),
+        )
         announcementEngine.evaluateCandidates(
             currentVersion = VersionManager.getVersionName(),
             currentPlatform = platformName,
             currentLocale = language,
-            uiContext = uiContext
+            uiContext = uiContext,
+            profile = profileContext,
         )
     }
 

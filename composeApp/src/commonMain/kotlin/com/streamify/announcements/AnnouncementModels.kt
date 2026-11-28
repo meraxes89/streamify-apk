@@ -52,7 +52,36 @@ data class Targeting(
     val minVersion: String? = null,
     val maxVersion: String? = null,
     val platforms: List<String> = emptyList(), // "android", "desktop", "wasm"
-    val locales: List<String> = emptyList()
+    val locales: List<String> = emptyList(),
+    val channels: List<String> = emptyList(), // e.g. "stable", "nightly", "vivo"
+    val minPlays: Int? = null,
+    val maxPlays: Int? = null,
+    val minListeningHours: Double? = null,
+    val favoriteGenres: List<String> = emptyList(),
+    val minAccountAgeDays: Int? = null,
+    val maxAccountAgeDays: Int? = null,
+    val minDormantDays: Int? = null,
+    val requireAdmin: Boolean? = null,
+    val requireAuthenticated: Boolean? = null,
+    val targetUserHashes: List<String> = emptyList(), // lowercase SHA-256("$announcementId:$userId")
+    val rolloutPercent: Int? = null, // 0..100 deterministic per-user rollout
+)
+
+/**
+ * Local user profile & engagement snapshot used for client-side targeted announcement evaluation.
+ */
+data class UserProfileContext(
+    val userId: String? = null,
+    val displayName: String? = null,
+    val isAdmin: Boolean = false,
+    val totalPlays: Int = 0,
+    val listeningSeconds: Long = 0L,
+    val favoriteGenre: String? = null,
+    val topTrack: String? = null,
+    val createdAtEpochMs: Long? = null,
+    val lastActiveAtEpochMs: Long? = null,
+    val channel: String? = null,
+    val isAuthenticated: Boolean = false,
 )
 
 @Serializable
