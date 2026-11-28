@@ -409,6 +409,14 @@ END;
 $$;
 
 -- 5.2 ingest_track_hints
+CREATE TABLE IF NOT EXISTS public.track_hint_rate_limits (
+    user_id      UUID NOT NULL,
+    window_hour  TIMESTAMPTZ NOT NULL,
+    call_count   INT NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, window_hour)
+);
+ALTER TABLE public.track_hint_rate_limits ENABLE ROW LEVEL SECURITY;
+
 CREATE OR REPLACE FUNCTION public.ingest_track_hints(p_hints JSONB)
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -431,6 +439,8 @@ DECLARE
     v_enqueued    INT := 0;
     v_quality     SMALLINT;
     v_need_enrich BOOLEAN;
+    v_window_hr   TIMESTAMPTZ := date_trunc('hour', clock_timestamp());
+    v_hint_calls  INT := 0;
 BEGIN
     IF v_user_id IS NULL THEN
         RETURN jsonb_build_object('status', 'UNAUTHORIZED');
@@ -440,7 +450,13 @@ BEGIN
         RETURN jsonb_build_object('status', 'INVALID_BATCH', 'max_batch_size', 100);
     END IF;
 
-    IF NOT public.track_ingest_allowed() THEN
+    INSERT INTO public.track_hint_rate_limits (user_id, window_hour, call_count)
+    VALUES (v_user_id, v_window_hr, 1)
+    ON CONFLICT (user_id, window_hour) DO UPDATE SET
+        call_count = track_hint_rate_limits.call_count + 1
+    RETURNING call_count INTO v_hint_calls;
+
+    IF v_hint_calls > 60 THEN
         RETURN jsonb_build_object('status', 'RATE_LIMITED', 'rate_limited', true);
     END IF;
 

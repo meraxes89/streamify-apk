@@ -4,6 +4,9 @@ import com.streamify.supabase.v5.HeartbeatPresenceV2Response
 import com.streamify.supabase.v5.PlaneCPresenceClient
 import com.streamify.supabase.v5.RpcResult
 import com.streamify.supabase.v5.StopPresenceResponse
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlin.concurrent.Volatile
 import kotlin.math.max
 import kotlin.math.min
 
@@ -40,9 +43,13 @@ class PresenceLeaseClient(
     private val client: PlaneCPresenceClient,
     private val nowMs: () -> Long,
 ) {
+    private val stateMutex = Mutex()
+
+    @Volatile
     var state: PresenceLeaseState = PresenceLeaseState.IDLE
         private set
 
+    @Volatile
     var lastHeartbeatAtMs: Long = 0L
         private set
 
@@ -54,7 +61,7 @@ class PresenceLeaseClient(
 
     suspend fun sendPlaybackHeartbeat(
         snapshot: PlaybackLeaseSnapshot,
-    ): RpcResult<HeartbeatPresenceV2Response> {
+    ): RpcResult<HeartbeatPresenceV2Response> = stateMutex.withLock {
         val ttl = recommendedTtlSec(snapshot.isHiddenWebTab)
         val res = client.heartbeatPresenceV2(
             deviceId = snapshot.deviceId,
@@ -77,14 +84,14 @@ class PresenceLeaseClient(
             lastHeartbeatAtMs = nowMs()
             state = if (snapshot.isPlaying) PresenceLeaseState.PLAYING_LEASE_ACTIVE else PresenceLeaseState.IDLE
         }
-        return res
+        res
     }
 
     suspend fun stopLease(
         snapshot: PlaybackLeaseSnapshot,
         reason: String = "paused",
         saveHandoff: Boolean = true,
-    ): RpcResult<StopPresenceResponse> {
+    ): RpcResult<StopPresenceResponse> = stateMutex.withLock {
         val res = client.stopPresence(
             deviceId = snapshot.deviceId,
             reason = reason,
@@ -99,7 +106,7 @@ class PresenceLeaseClient(
             artworkUrl = snapshot.artworkUrl,
         )
         state = PresenceLeaseState.IDLE
-        return res
+        res
     }
 
     fun setViewingConnect(viewing: Boolean) {

@@ -372,6 +372,13 @@ BEGIN
         RETURN jsonb_build_object('status', 'UNAUTHORIZED');
     END IF;
 
+    IF public._plane_c_is_device_revoked(
+        v_user_id,
+        NULLIF(btrim(COALESCE(current_setting('request.headers', true)::jsonb->>'x-device-id', '')), '')
+    ) THEN
+        RETURN jsonb_build_object('status', 'DEVICE_REVOKED');
+    END IF;
+
     IF public._plane_c_is_device_revoked(v_user_id, v_device_id) THEN
         RETURN jsonb_build_object('status', 'DEVICE_REVOKED');
     END IF;
@@ -611,6 +618,13 @@ BEGIN
         RETURN jsonb_build_object('status', 'UNAUTHORIZED');
     END IF;
 
+    IF public._plane_c_is_device_revoked(
+        v_user_id,
+        NULLIF(btrim(COALESCE(current_setting('request.headers', true)::jsonb->>'x-device-id', '')), '')
+    ) THEN
+        RETURN jsonb_build_object('status', 'DEVICE_REVOKED');
+    END IF;
+
     WITH page AS (
         SELECT
             client_event_id,
@@ -700,6 +714,13 @@ DECLARE
 BEGIN
     IF v_user_id IS NULL THEN
         RETURN jsonb_build_object('status', 'UNAUTHORIZED');
+    END IF;
+
+    IF public._plane_c_is_device_revoked(
+        v_user_id,
+        NULLIF(btrim(COALESCE(current_setting('request.headers', true)::jsonb->>'x-device-id', '')), '')
+    ) THEN
+        RETURN jsonb_build_object('status', 'DEVICE_REVOKED');
     END IF;
 
     IF p_queries IS NULL OR jsonb_typeof(p_queries) <> 'array' THEN
@@ -792,6 +813,13 @@ BEGIN
         RETURN jsonb_build_object('status', 'UNAUTHORIZED');
     END IF;
 
+    IF public._plane_c_is_device_revoked(
+        v_user_id,
+        NULLIF(btrim(COALESCE(current_setting('request.headers', true)::jsonb->>'x-device-id', '')), '')
+    ) THEN
+        RETURN jsonb_build_object('status', 'DEVICE_REVOKED');
+    END IF;
+
     IF char_length(v_query_norm) < 1 THEN
         RETURN jsonb_build_object('status', 'INVALID_PAYLOAD');
     END IF;
@@ -832,6 +860,13 @@ DECLARE
 BEGIN
     IF v_user_id IS NULL THEN
         RETURN jsonb_build_object('status', 'UNAUTHORIZED');
+    END IF;
+
+    IF public._plane_c_is_device_revoked(
+        v_user_id,
+        NULLIF(btrim(COALESCE(current_setting('request.headers', true)::jsonb->>'x-device-id', '')), '')
+    ) THEN
+        RETURN jsonb_build_object('status', 'DEVICE_REVOKED');
     END IF;
 
     INSERT INTO public.user_search_state (user_id, search_cleared_at, clear_epoch, updated_at)
@@ -879,6 +914,13 @@ DECLARE
 BEGIN
     IF v_user_id IS NULL THEN
         RETURN jsonb_build_object('status', 'UNAUTHORIZED');
+    END IF;
+
+    IF public._plane_c_is_device_revoked(
+        v_user_id,
+        NULLIF(btrim(COALESCE(current_setting('request.headers', true)::jsonb->>'x-device-id', '')), '')
+    ) THEN
+        RETURN jsonb_build_object('status', 'DEVICE_REVOKED');
     END IF;
 
     SELECT search_cleared_at, clear_epoch
@@ -945,7 +987,7 @@ BEGIN
               AND deleted_at IS NOT NULL
               AND updated_at > p_since_updated_at
             ORDER BY updated_at DESC
-            LIMIT v_limit
+            LIMIT 1000
         ) sub;
     END IF;
 
@@ -976,6 +1018,13 @@ DECLARE
 BEGIN
     IF v_user_id IS NULL THEN
         RETURN jsonb_build_object('status', 'UNAUTHORIZED');
+    END IF;
+
+    IF public._plane_c_is_device_revoked(
+        v_user_id,
+        NULLIF(btrim(COALESCE(current_setting('request.headers', true)::jsonb->>'x-device-id', '')), '')
+    ) THEN
+        RETURN jsonb_build_object('status', 'DEVICE_REVOKED');
     END IF;
 
     SELECT COALESCE(jsonb_agg(
@@ -1027,6 +1076,13 @@ DECLARE
 BEGIN
     IF v_user_id IS NULL THEN
         RETURN jsonb_build_object('status', 'UNAUTHORIZED');
+    END IF;
+
+    IF public._plane_c_is_device_revoked(
+        v_user_id,
+        NULLIF(btrim(COALESCE(current_setting('request.headers', true)::jsonb->>'x-device-id', '')), '')
+    ) THEN
+        RETURN jsonb_build_object('status', 'DEVICE_REVOKED');
     END IF;
 
     IF p_period_key IS NULL OR p_period_key !~ '^([0-9]{4}(-(Q[1-4]|(0[1-9]|1[0-2])))?|all_time)$'
@@ -1115,6 +1171,13 @@ DECLARE
 BEGIN
     IF v_user_id IS NULL THEN
         RETURN jsonb_build_object('status', 'UNAUTHORIZED');
+    END IF;
+
+    IF public._plane_c_is_device_revoked(
+        v_user_id,
+        NULLIF(btrim(COALESCE(current_setting('request.headers', true)::jsonb->>'x-device-id', '')), '')
+    ) THEN
+        RETURN jsonb_build_object('status', 'DEVICE_REVOKED');
     END IF;
 
     IF p_period_key IS NULL OR p_period_key !~ '^([0-9]{4}(-(Q[1-4]|(0[1-9]|1[0-2])))?|all_time)$' THEN
@@ -1321,8 +1384,8 @@ BEGIN
     LOOP
         v_month_start := to_date(substring(v_rec.relname FROM 'y([0-9]{4}m[0-9]{2})$'), 'YYYY"m"MM');
         IF v_month_start < v_cutoff_month THEN
-            EXECUTE format('ALTER TABLE public.user_listening_history DETACH PARTITION public.%I CONCURRENTLY', v_rec.relname);
-            EXECUTE format('DROP TABLE public.%I', v_rec.relname);
+            EXECUTE format('ALTER TABLE public.user_listening_history DETACH PARTITION public.%I', v_rec.relname);
+            EXECUTE format('DROP TABLE IF EXISTS public.%I', v_rec.relname);
             v_dropped := array_append(v_dropped, v_rec.relname);
         END IF;
     END LOOP;
