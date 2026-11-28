@@ -1,0 +1,70 @@
+name: Sync Governance (S23)
+
+on:
+  pull_request:
+    paths:
+      - 'supabase/**'
+      - 'docs/contracts/**'
+      - 'streamify-modules/supabase/**'
+      - 'composeApp/src/**/sync/**'
+      - '.github/workflows/sync-governance-s23.yml'
+
+jobs:
+  contract-and-guardrails:
+    name: Contract Manifest & Architectural Guardrails
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Validate sync-contract-v5.json schema
+        run: |
+          python3 - <<'PY'
+          import json, pathlib
+          manifest = json.loads(pathlib.Path("docs/contracts/sync-contract-v5.json").read_text())
+          assert manifest["contract_version"] == 5, "contract_version must be 5"
+          assert isinstance(manifest.get("rpcs"), dict) and len(manifest["rpcs"]) >= 20, "expected Plane A-F RPCs"
+          for name, spec in manifest["rpcs"].items():
+              assert spec.get("plane") in {"A", "B", "C", "D", "F"}, f"invalid plane for {name}"
+              assert isinstance(spec.get("args"), list), f"args must be list for {name}"
+          print(f"Validated {len(manifest['rpcs'])} RPC contracts in sync-contract-v5.json")
+          PY
+
+      - name: Enforce 14-digit UTC migration naming for v5+ SQL files
+        run: |
+          python3 - <<'PY'
+          import pathlib, re, sys
+          mig_dir = pathlib.Path("supabase/migrations")
+          bad = []
+          for p in sorted(mig_dir.glob("*.sql")):
+              if p.name.startswith("2026_01_") or p.name.startswith("2026_11_"):
+                  continue
+              if not re.match(r"^\d{14}_[a-z0-9_]+\.sql$", p.name):
+                  bad.append(p.name)
+          if bad:
+              print("Invalid v5+ migration filename(s) (expected YYYYMMDDHHMMSS_name.sql):", bad)
+              sys.exit(1)
+          print("All v5+ migration filenames match YYYYMMDDHHMMSS_*.sql")
+          PY
+
+      - name: Check core/ submodule boundary and reflection-free sync/ guardrails
+        run: |
+          python3 - <<'PY'
+          import pathlib, subprocess, sys
+          diff = subprocess.check_output(["git", "diff", "--name-only", "HEAD", "--", "core/"], text=True).strip()
+          if diff:
+              print("Forbidden changes inside core/ submodule:", diff)
+              sys.exit(1)
+          # Guard against new Class.forName usage in v5 sync packages
+          v5_root = pathlib.Path("composeApp/src")
+          offenders = []
+          for kt in v5_root.rglob("*.kt"):
+              if "/sync/v5/" in kt.as_posix() or "/sync/api/" in kt.as_posix():
+                  if "Class.forName" in kt.read_text(encoding="utf-8", errors="ignore"):
+                      offenders.append(str(kt))
+          if offenders:
+              print("Class.forName forbidden in v5 sync packages:", offenders)
+              sys.exit(1)
+          print("Guardrails passed: core/ untouched, zero Class.forName in v5 sync packages")
+          PY
