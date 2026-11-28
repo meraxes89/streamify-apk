@@ -18,7 +18,8 @@ class AnnouncementEngine(
     private val dataStoreManager: DataStoreManager,
     private val remoteSource: RemoteAnnouncementSource = RemoteAnnouncementSource(dataStoreManager),
     private val inboxRepository: AnnouncementInboxRepository = AnnouncementInboxRepository(dataStoreManager),
-    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+    private val supabaseSource: SupabaseAnnouncementSource? = SupabaseAnnouncementSource(dataStoreManager),
 ) {
     private val store = AnnouncementStore(dataStoreManager)
     private val frequencyGovernor = FrequencyGovernor(store)
@@ -48,11 +49,19 @@ class AnnouncementEngine(
                 cachedGovernance = manifestResult.governance
                 DeepLinkAllowlist.setDynamicAllowedDomains(manifestResult.governance.allowedExtraDomains)
 
+                // Fetch authenticated 1:1 / segment announcements from Supabase (fail-safe)
+                val personalizedAnnouncements = supabaseSource?.fetch(
+                    revokedIds = manifestResult.revokedIds.toSet(),
+                    allowedExtraDomains = manifestResult.governance.allowedExtraDomains,
+                ).orEmpty()
+
+                val remoteAll = (manifestResult.announcements + personalizedAnnouncements).distinctBy { it.id }
+
                 // If master switch is false, immediately silence any active modal and abort presentation
                 if (!manifestResult.popupModalEnabled) {
                     arbiter.dismissActive()
-                    if (manifestResult.announcements.isNotEmpty()) {
-                        val eligibleInbox = manifestResult.announcements
+                    if (remoteAll.isNotEmpty()) {
+                        val eligibleInbox = remoteAll
                             .filter { announcement ->
                                 TargetingEvaluator.isEligible(
                                     announcement.targeting,
@@ -72,7 +81,7 @@ class AnnouncementEngine(
                     return@launch
                 }
 
-                val combined = (LocalAnnouncementDefaults.ALL + manifestResult.announcements).distinctBy { it.id }
+                val combined = (LocalAnnouncementDefaults.ALL + remoteAll).distinctBy { it.id }
 
                 val eligible = combined.filter { announcement ->
                     TargetingEvaluator.isEligible(
