@@ -560,7 +560,14 @@ BEGIN
             track_title    = EXCLUDED.track_title,
             artist_name    = EXCLUDED.artist_name,
             artwork_url    = EXCLUDED.artwork_url,
-            handoff_epoch  = user_playback_handoff.handoff_epoch + 1,
+            handoff_epoch  = CASE
+                WHEN user_playback_handoff.device_id IS DISTINCT FROM EXCLUDED.device_id
+                  OR user_playback_handoff.track_id IS DISTINCT FROM EXCLUDED.track_id
+                  OR user_playback_handoff.source_context IS DISTINCT FROM EXCLUDED.source_context
+                  OR user_playback_handoff.source_id IS DISTINCT FROM EXCLUDED.source_id
+                THEN user_playback_handoff.handoff_epoch + 1
+                ELSE user_playback_handoff.handoff_epoch
+            END,
             captured_at    = v_now,
             updated_at     = v_now;
     END IF;
@@ -672,7 +679,14 @@ BEGIN
             track_title    = EXCLUDED.track_title,
             artist_name    = EXCLUDED.artist_name,
             artwork_url    = EXCLUDED.artwork_url,
-            handoff_epoch  = user_playback_handoff.handoff_epoch + 1,
+            handoff_epoch  = CASE
+                WHEN user_playback_handoff.device_id IS DISTINCT FROM EXCLUDED.device_id
+                  OR user_playback_handoff.track_id IS DISTINCT FROM EXCLUDED.track_id
+                  OR user_playback_handoff.source_context IS DISTINCT FROM EXCLUDED.source_context
+                  OR user_playback_handoff.source_id IS DISTINCT FROM EXCLUDED.source_id
+                THEN user_playback_handoff.handoff_epoch + 1
+                ELSE user_playback_handoff.handoff_epoch
+            END,
             captured_at    = v_now,
             updated_at     = v_now;
 
