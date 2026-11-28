@@ -16,7 +16,7 @@ import kotlin.uuid.Uuid
  */
 class SettingsSyncObserver(
     private val store: SyncV5Store,
-    private val deviceIdProvider: () -> String,
+    private val deviceIdProvider: suspend () -> String,
 ) {
     private val mutex = Mutex()
     private val suppressedValues = mutableMapOf<String, String>()

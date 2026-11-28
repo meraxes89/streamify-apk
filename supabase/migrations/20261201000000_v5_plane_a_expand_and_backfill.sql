@@ -139,6 +139,7 @@ CREATE INDEX IF NOT EXISTS idx_user_library_tracks_gc
 
 -- 5. Evolve & Backfill user_item_favorites
 ALTER TABLE public.user_item_favorites
+    ADD COLUMN IF NOT EXISTS metadata   JSONB NOT NULL DEFAULT '{}'::jsonb,
     ADD COLUMN IF NOT EXISTS deleted    BOOLEAN NOT NULL DEFAULT false,
     ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
 
