@@ -39,4 +39,4 @@ Decompose S11/S22 synchronization into six strictly decoupled planes backed by a
   3. Static guardrail blocking `Class.forName` inside `sync/` and dirty `core/` submodule diffs.
 
 ---
-<!-- doc-verified-against: 5090ce2996675e6373da0f9fe2e6bf97240a7ecd -->
+<!-- doc-verified-against: ce0da207eb61842736234428d081c9ed2cec39b1 -->
