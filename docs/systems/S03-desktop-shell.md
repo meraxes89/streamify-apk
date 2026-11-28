@@ -23,6 +23,7 @@ tests: []
 ## Current truth
 
 - Packaged for Windows/macOS/Linux; installers are built by the release workflow.
+- All `AbstractJPackageTask` tasks in `desktopApp/build.gradle.kts` depend on `:composeApp:mpvSetupAll` so `.deb`/`.rpm`/`.msi`/`.dmg` installers stage `mpv-natives/<os>-<arch>` into `appResourcesRootDir`, and `.github/workflows/_ci-desktop.yml` invokes `packageReleaseDistributionForCurrentOS` so CI/release installers run ProGuard shrinking.
 
 ## Interfaces
 
@@ -45,4 +46,4 @@ tests: []
 
 - Add a single runbook for installer troubleshooting.
 
-<!-- doc-verified-against: 7ee638426aa9f0594a5f0e960ca53cb39ab1220f -->
+<!-- doc-verified-against: 3fce4cd9c7268bb7e8dd1113d47e9635d9e81e68 -->

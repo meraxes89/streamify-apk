@@ -578,7 +578,12 @@ tasks.register("buildWindowsMsix") {
 }
 
 tasks.withType<AbstractJPackageTask>().configureEach {
+    dependsOn(":composeApp:mpvSetupAll")
     notCompatibleWithConfigurationCache("Compose Desktop JPackage tasks are not yet compatible with configuration cache")
+}
+
+tasks.matching { it.name == "prepareAppResources" || it.name == "prepareReleaseAppResources" }.configureEach {
+    dependsOn(":composeApp:mpvSetupAll")
 }
 
 private fun downloadFile(
