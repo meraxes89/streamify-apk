@@ -1422,7 +1422,7 @@ fun QuickPicks(
                     )
                 }
                 Text(
-                    text = stringResource(Res.string.quick_picks),
+                    text = homeItem.title.ifBlank { stringResource(Res.string.quick_picks) },
                     style = typo().headlineMedium,
                     color = MaterialTheme.colorScheme.onBackground,
                     maxLines = 1,

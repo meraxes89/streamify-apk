@@ -209,6 +209,7 @@ fun initWebKoin() {
         modules(
             webAppModule,
             viewModelModule,
+            com.streamify.sync.v5.di.syncV5Module,
         )
     }
 }
