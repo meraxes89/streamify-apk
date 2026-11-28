@@ -68,3 +68,23 @@ jobs:
               sys.exit(1)
           print("Guardrails passed: core/ untouched, zero Class.forName in v5 sync packages")
           PY
+
+      - name: Verify KMP client RPC parity with sync-contract-v5.json (Planes A-D)
+        run: |
+          python3 - <<'PY'
+          import json, pathlib
+          manifest = json.loads(pathlib.Path("docs/contracts/sync-contract-v5.json").read_text())
+          plane_files = {
+              "A": pathlib.Path("streamify-modules/supabase/src/commonMain/kotlin/com/streamify/supabase/v5/PlaneAStateSyncClient.kt").read_text(),
+              "B": pathlib.Path("streamify-modules/supabase/src/commonMain/kotlin/com/streamify/supabase/v5/PlaneBEventClient.kt").read_text(),
+              "C": pathlib.Path("streamify-modules/supabase/src/commonMain/kotlin/com/streamify/supabase/v5/PlaneCPresenceClient.kt").read_text(),
+              "D": pathlib.Path("streamify-modules/supabase/src/commonMain/kotlin/com/streamify/supabase/v5/PlaneDCatalogClient.kt").read_text(),
+          }
+          missing = []
+          for rpc, spec in manifest["rpcs"].items():
+              plane = spec.get("plane")
+              if plane in plane_files and f'"{rpc}"' not in plane_files[plane]:
+                  missing.append((plane, rpc))
+          assert not missing, f"Missing contract RPCs in KMP clients: {missing}"
+          print("Plane A-D KMP client RPC parity verified")
+          PY
