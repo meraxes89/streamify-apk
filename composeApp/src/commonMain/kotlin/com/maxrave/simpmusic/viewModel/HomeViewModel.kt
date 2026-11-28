@@ -12,6 +12,7 @@ import com.maxrave.domain.manager.DataStoreManager
 import com.maxrave.domain.manager.DataStoreManager.Values.TRUE
 import com.maxrave.domain.repository.HomeRepository
 import com.maxrave.domain.utils.Resource
+import com.maxrave.simpmusic.utils.isExactQuickPicksShelf
 import com.maxrave.simpmusic.utils.pinQuickPicksToTop
 import com.maxrave.logger.Logger
 import com.maxrave.simpmusic.viewModel.base.BaseViewModel
@@ -27,12 +28,14 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import simpmusic.composeapp.generated.resources.Res
 import simpmusic.composeapp.generated.resources.music_video
 import simpmusic.composeapp.generated.resources.new_release
+import simpmusic.composeapp.generated.resources.quick_picks
 import simpmusic.composeapp.generated.resources.song
 import simpmusic.composeapp.generated.resources.view_count
 
@@ -172,11 +175,14 @@ class HomeViewModel(
                     dataStoreManager.getString(SELECTED_LANGUAGE).first()
                         ?: SUPPORTED_LANGUAGE.codes.first()
                 regionCode = dataStoreManager.location.first()
+                val viewStr = getString(Res.string.view_count)
+                val songStr = getString(Res.string.song)
+                val quickPicksTitle = getString(Res.string.quick_picks)
                 combine(
                     homeRepository.getHomeData(
                         params,
-                        getString(Res.string.view_count),
-                        getString(Res.string.song),
+                        viewStr,
+                        songStr,
                     ),
                     homeRepository.getMoodAndMomentsData(),
                     homeRepository.getChartData(dataStoreManager.chartKey.first()),
@@ -194,8 +200,29 @@ class HomeViewModel(
                     val newRelease = result.newRelease
                     when (home) {
                         is Resource.Success -> {
-                            _continuation.value = home.data?.first
-                            _homeItemList.value = (home.data?.second ?: listOf()).pinQuickPicksToTop()
+                            var nextCont = home.data?.first
+                            val items = (home.data?.second ?: listOf()).toMutableList()
+                            // YouTube Music often places Quick picks on continuation page 1+ for
+                            // logged-in / dynamic feeds; eagerly pull up to 3 continuation pages
+                            // until Quick picks is found so it is pinned on launch and refresh.
+                            var contPages = 0
+                            while (items.none { it.isExactQuickPicksShelf(quickPicksTitle) } &&
+                                !nextCont.isNullOrEmpty() &&
+                                contPages < MAX_QUICK_PICKS_CONTINUATION_PAGES
+                            ) {
+                                val contRes = homeRepository
+                                    .getHomeDataContinue(nextCont, viewStr, songStr)
+                                    .firstOrNull()
+                                if (contRes is Resource.Success) {
+                                    nextCont = contRes.data?.first
+                                    contRes.data?.second?.let { items.addAll(it) }
+                                } else {
+                                    break
+                                }
+                                contPages++
+                            }
+                            _continuation.value = nextCont
+                            _homeItemList.value = items.pinQuickPicksToTop(quickPicksTitle)
                             _homeBackground.value = home.data?.third
                         }
 
@@ -288,7 +315,8 @@ class HomeViewModel(
                             is Resource.Success -> {
                                 _continuation.value = home.data?.first
                                 val newItems = home.data?.second ?: listOf()
-                                _homeItemList.update { (it + newItems).pinQuickPicksToTop() }
+                                val quickPicksTitle = getString(Res.string.quick_picks)
+                                _homeItemList.update { (it + newItems).pinQuickPicksToTop(quickPicksTitle) }
                                 if (home.data?.first.isNullOrEmpty()) {
                                     _homeListState.value = ListState.PAGINATION_EXHAUST
                                 } else {
@@ -343,6 +371,8 @@ class HomeViewModel(
     }
 
     companion object {
+        private const val MAX_QUICK_PICKS_CONTINUATION_PAGES = 3
+
         // Home params
         const val HOME_PARAMS_RELAX = "ggM8SgQIBxADSgQIBRABSgQICRABSgQIChABSgQIDRABSgQICBABSgQIBBABSgQIDhABSgQIAxABSgQIBhAB"
         const val HOME_PARAMS_SLEEP = "ggM8SgQIBxABSgQIBRADSgQICRABSgQIChABSgQIDRABSgQICBABSgQIBBABSgQIDhABSgQIAxABSgQIBhAB"
