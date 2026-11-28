@@ -6,6 +6,7 @@ import com.streamify.supabase.v5.PlaneAStateSyncClient
 import com.streamify.sync.HybridLogicalClock
 import com.streamify.sync.v5.planea.PushOutcome
 import com.streamify.sync.v5.planea.SyncOutboxProcessor
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
@@ -69,7 +70,7 @@ class PlaneAV5Test {
         assertEquals(0, store.pendingCount())
         assertNull(store.getCheckpoint("user-a"))
 
-        val insideRemoteApply = lifecycle.withBackupRestoreFence {
+        val insideRemoteApply = lifecycle.withBackupRestoreFence<Boolean> {
             guard.isRemoteApplying()
         }
         assertTrue(insideRemoteApply)
@@ -184,7 +185,7 @@ class PlaneAV5Test {
         assertEquals(1, outcome.pushedCount)
         assertEquals(3, calls)
         assertEquals(listOf("m-good"), acked)
-        val dl = store.getDeadLetterSummary()
+        val dl = store.observeDeadLetterSummary().first()
         assertEquals(1, dl.count)
     }
 }
