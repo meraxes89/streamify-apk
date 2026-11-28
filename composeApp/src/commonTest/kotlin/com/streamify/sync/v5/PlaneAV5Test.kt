@@ -75,7 +75,7 @@ class PlaneAV5Test {
         }
         assertTrue(insideRemoteApply)
         assertFalse(guard.isRemoteApplying())
-        assertEquals(0L, HybridLogicalClock.unpackCounter(HybridLogicalClock.pack(1000L, 0)))
+        assertEquals(0, HybridLogicalClock.unpackCounter(HybridLogicalClock.pack(1000L, 0)))
     }
 
     @Test
