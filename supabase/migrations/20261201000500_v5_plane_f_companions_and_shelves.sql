@@ -670,10 +670,13 @@ BEGIN
 
     SELECT GREATEST(
         COALESCE((SELECT MAX(refreshed_at) FROM public.mv_shelf_community_hits), '-infinity'::timestamptz),
-        COALESCE((SELECT MAX(refreshed_at) FROM public.mv_shelf_hourly_community_tracks), '-infinity'::timestamptz)
+        COALESCE((SELECT MAX(refreshed_at) FROM public.mv_shelf_hourly_community_tracks), '-infinity'::timestamptz),
+        CASE WHEN v_user_id IS NOT NULL THEN
+            COALESCE((SELECT MAX(played_at) FROM public.user_listening_history WHERE user_id = v_user_id AND played_at >= now() - INTERVAL '90 days'), '-infinity'::timestamptz)
+        ELSE '-infinity'::timestamptz END
     ) INTO v_last_refreshed;
 
-    IF p_if_modified_since IS NOT NULL AND v_last_refreshed <= p_if_modified_since AND v_user_id IS NULL THEN
+    IF p_if_modified_since IS NOT NULL AND v_last_refreshed <= p_if_modified_since THEN
         RETURN jsonb_build_object(
             'status', 'NOT_MODIFIED',
             'daypart', v_daypart,

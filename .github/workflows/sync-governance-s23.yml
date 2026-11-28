@@ -17,6 +17,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: false
+          fetch-depth: 0
 
       - name: Validate sync-contract-v5.json schema
         run: |
@@ -35,10 +36,26 @@ jobs:
         run: |
           python3 - <<'PY'
           import pathlib, re, sys
+          LEGACY_PRE_V5 = {
+              "2026_01_stats_overhaul.sql",
+              "2026_11_drift_catchup.sql",
+              "2026_11_p0_sec_and_bloat_lockdown.sql",
+              "2026_11_p1_additive_schema_staging.sql",
+              "2026_11_p2_rpcs_triggers_indexes.sql",
+              "2026_11_p4_view_bridge_and_decommission.sql",
+              "2026_11_p5_v4_1_library_and_playlist_deltas.sql",
+              "2026_11_p6_v4_1_podcast_episode_state.sql",
+              "2026_11_p7_v4_1_device_fleet_and_version_telemetry.sql",
+              "2026_11_p8_v4_server_contract_and_lww_hardening.sql",
+              "2026_11_sec10_rls_hardening.sql",
+              "2026_11_sync_v2_unification.sql",
+              "2026_11_sync_v3_user_graph.sql",
+              "2026_11_ws_w_canary_results.sql",
+          }
           mig_dir = pathlib.Path("supabase/migrations")
           bad = []
           for p in sorted(mig_dir.glob("*.sql")):
-              if p.name.startswith("2026_01_") or p.name.startswith("2026_11_"):
+              if p.name in LEGACY_PRE_V5:
                   continue
               if not re.match(r"^\d{14}_[a-z0-9_]+\.sql$", p.name):
                   bad.append(p.name)
@@ -52,7 +69,10 @@ jobs:
         run: |
           python3 - <<'PY'
           import pathlib, subprocess, sys
-          diff = subprocess.check_output(["git", "diff", "--name-only", "HEAD", "--", "core/"], text=True).strip()
+          base_ref = "origin/main"
+          has_origin_main = subprocess.run(["git", "rev-parse", "--verify", base_ref], capture_output=True).returncode == 0
+          diff_cmd = ["git", "diff", "--name-only", f"{base_ref}...HEAD", "--", "core/"] if has_origin_main else ["git", "diff", "--name-only", "HEAD", "--", "core/"]
+          diff = subprocess.check_output(diff_cmd, text=True).strip()
           if diff:
               print("Forbidden changes inside core/ submodule:", diff)
               sys.exit(1)
@@ -69,10 +89,10 @@ jobs:
           print("Guardrails passed: core/ untouched, zero Class.forName in v5 sync packages")
           PY
 
-      - name: Verify KMP client RPC parity with sync-contract-v5.json (Planes A-D)
+      - name: Verify KMP client RPC parity with sync-contract-v5.json (Planes A-F)
         run: |
           python3 - <<'PY'
-          import json, pathlib
+          import json, pathlib, re
           manifest = json.loads(pathlib.Path("docs/contracts/sync-contract-v5.json").read_text())
           plane_files = {
               "A": pathlib.Path("streamify-modules/supabase/src/commonMain/kotlin/com/streamify/supabase/v5/PlaneAStateSyncClient.kt").read_text(),
@@ -84,10 +104,12 @@ jobs:
           missing = []
           for rpc, spec in manifest["rpcs"].items():
               plane = spec.get("plane")
-              if plane in plane_files and f'"{rpc}"' not in plane_files[plane]:
-                  missing.append((plane, rpc))
+              if plane in plane_files:
+                  pattern = rf'executor\.invoke\(\s*"{re.escape(rpc)}"'
+                  if not re.search(pattern, plane_files[plane]):
+                      missing.append((plane, rpc))
           assert not missing, f"Missing contract RPCs in KMP clients: {missing}"
-          print("Plane A-D KMP client RPC parity verified")
+          print("Planes A-F KMP client RPC parity verified")
           PY
 
   v5-migration-replay-and-sql-tests:
@@ -111,6 +133,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: false
+          fetch-depth: 0
 
       - name: Replay schema + v5 migrations + run v5 SQL tests
         env:

@@ -9,6 +9,7 @@ import com.streamify.supabase.v5.PlaneCPresenceClient
 import com.streamify.supabase.v5.PlaneDCatalogClient
 import com.streamify.supabase.v5.PlaneFCompanionClient
 import com.streamify.supabase.v5.SupabaseRpcExecutor
+import com.streamify.sync.StreamifySyncEngine
 import com.streamify.sync.SyncOutboxRepository
 import com.streamify.sync.v5.CoreSyncBridge
 import com.streamify.sync.v5.CoreSyncSource
@@ -81,7 +82,7 @@ val syncV5Module = module {
     single { DeviceSessionRegistrar(get()) { Clock.System.now().toEpochMilliseconds() } }
     single { CatalogHydrationCoordinator(get(), get()) { Clock.System.now().toEpochMilliseconds() } }
 
-    single { SettingsSyncObserver(get()) { "kmp_device" } }
+    single { SettingsSyncObserver(get()) { getOrNull<StreamifySyncEngine>()?.getOrCreateDeviceId() ?: "kmp_device" } }
 
     single<CoreSyncSource?> {
         getOrNull<SyncOutboxRepository>()?.let { SyncOutboxCoreSource(it) }
@@ -91,7 +92,7 @@ val syncV5Module = module {
         CoreSyncBridge(
             coreSource = src,
             store = get(),
-            deviceIdProvider = { "kmp_device" },
+            deviceIdProvider = { getOrNull<StreamifySyncEngine>()?.getOrCreateDeviceId() ?: "kmp_device" },
         )
     }
 

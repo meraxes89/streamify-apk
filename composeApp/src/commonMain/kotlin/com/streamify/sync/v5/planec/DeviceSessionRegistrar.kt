@@ -3,6 +3,8 @@ package com.streamify.sync.v5.planec
 import com.streamify.supabase.v5.PlaneCPresenceClient
 import com.streamify.supabase.v5.RecordDeviceSessionResponse
 import com.streamify.supabase.v5.RpcResult
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 data class DeviceMetadata(
     val deviceId: String,
@@ -23,20 +25,21 @@ class DeviceSessionRegistrar(
     private val client: PlaneCPresenceClient,
     private val nowMs: () -> Long,
 ) {
+    private val stateMutex = Mutex()
     private var lastRegisteredAtMs: Long = Long.MIN_VALUE
     private var lastVersionKey: String? = null
 
     suspend fun registerIfNeeded(
         meta: DeviceMetadata,
         force: Boolean = false,
-    ): RpcResult<RecordDeviceSessionResponse>? {
+    ): RpcResult<RecordDeviceSessionResponse>? = stateMutex.withLock {
         val versionKey = "${meta.deviceId}|${meta.appVersion}|${meta.versionCode}|${meta.buildFlavor}"
         val now = nowMs()
         val versionChanged = versionKey != lastVersionKey
         val intervalElapsed = lastRegisteredAtMs == Long.MIN_VALUE || (now - lastRegisteredAtMs) >= REFRESH_INTERVAL_MS
 
         if (!force && !versionChanged && !intervalElapsed) {
-            return null
+            return@withLock null
         }
 
         val res = client.recordDeviceSession(
@@ -53,10 +56,10 @@ class DeviceSessionRegistrar(
             lastRegisteredAtMs = now
             lastVersionKey = versionKey
         }
-        return res
+        res
     }
 
-    fun reset() {
+    suspend fun reset() = stateMutex.withLock {
         lastRegisteredAtMs = Long.MIN_VALUE
         lastVersionKey = null
     }

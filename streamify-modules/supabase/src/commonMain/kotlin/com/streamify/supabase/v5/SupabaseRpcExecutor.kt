@@ -20,6 +20,8 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -92,6 +94,7 @@ open class SupabaseRpcExecutor(
 ) {
     private val _deviceRevokedEvents = MutableSharedFlow<DeviceRevokedEvent>(extraBufferCapacity = 4)
     val deviceRevokedEvents: SharedFlow<DeviceRevokedEvent> = _deviceRevokedEvents.asSharedFlow()
+    private val refreshMutex = Mutex()
 
     open suspend fun <T> invoke(
         rpcName: String,
@@ -108,8 +111,11 @@ open class SupabaseRpcExecutor(
         val firstAttempt = executeOnce(rpcName, bodyJson, initialToken, resolvedDeviceId)
 
         val finalResponse = if (firstAttempt.status == HttpStatusCode.Unauthorized) {
-            val refreshed = SupabaseClient.refreshSession().getOrNull()
-                ?: return@withContext RpcResult.Unauthorized("Session refresh failed")
+            val refreshed = refreshMutex.withLock {
+                val current = SupabaseClient.accessToken.value
+                    ?.takeIf { it.isNotBlank() && it != SupabaseConfig.ANON_KEY && it != initialToken }
+                current ?: SupabaseClient.refreshSession().getOrNull()
+            } ?: return@withContext RpcResult.Unauthorized("Session refresh failed")
             executeOnce(rpcName, bodyJson, refreshed, resolvedDeviceId)
         } else {
             firstAttempt

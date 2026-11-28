@@ -23,15 +23,22 @@ object SupabaseWrappedSync {
 
     /**
      * Emits one playback event to Supabase via `ingest_playback_events`.
+     * Uses a caller-provided [clientEventId] or a deterministic session UUID derived from
+     * `(userId, videoId, timestamp)` so transient retries never double-count plays.
      */
     @OptIn(ExperimentalUuidApi::class)
-    suspend fun recordPlaybackEvent(event: PlaybackTelemetryEvent): Boolean {
+    suspend fun recordPlaybackEvent(
+        event: PlaybackTelemetryEvent,
+        clientEventId: String? = null,
+        deviceId: String = "kmp_telemetry",
+    ): Boolean {
         val user = SupabaseClient.currentUser.value ?: return false
         if (event.userId != user.id) return false
 
+        val stableEventId = clientEventId?.takeIf { it.isNotBlank() } ?: deterministicEventUuid(event)
         val playedAtIso = Instant.fromEpochMilliseconds(event.timestamp).toString()
         val payload = PlaybackEventInputDto(
-            clientEventId = Uuid.random().toString(),
+            clientEventId = stableEventId,
             trackId = event.videoId,
             playedAt = playedAtIso,
             listenedDurationSec = event.listenedSeconds.coerceIn(0L, 14400L).toInt(),
@@ -40,10 +47,22 @@ object SupabaseWrappedSync {
             trackTitle = event.trackTitle,
             artistName = event.artistName,
         )
-        return when (val res = client.ingestPlaybackEvents("kmp_telemetry", listOf(payload))) {
+        return when (val res = client.ingestPlaybackEvents(deviceId.ifBlank { "kmp_telemetry" }, listOf(payload))) {
             is RpcResult.Ok -> res.data.status == "OK"
             else -> false
         }
+    }
+
+    @OptIn(ExperimentalUuidApi::class)
+    private fun deterministicEventUuid(event: PlaybackTelemetryEvent): String {
+        val seed = "${event.userId}|${event.videoId}|${event.timestamp}"
+        var h1 = -3750763034362895579L
+        var h2 = 1099511628211L
+        for (ch in seed) {
+            h1 = (h1 xor ch.code.toLong()) * 1099511628211L
+            h2 = (h2 * 31L) xor (ch.code.toLong() + 0x9e3779b97f4a7c15L)
+        }
+        return Uuid.fromLongs(h1, h2).toString()
     }
 
     /**

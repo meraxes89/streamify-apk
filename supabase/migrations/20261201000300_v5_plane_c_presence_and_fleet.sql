@@ -499,6 +499,10 @@ BEGIN
         RETURN jsonb_build_object('status', 'INVALID_DEVICE_ID');
     END IF;
 
+    IF public._plane_c_is_device_revoked(v_user_id, btrim(p_device_id)) THEN
+        RETURN jsonb_build_object('status', 'DEVICE_REVOKED');
+    END IF;
+
     IF p_platform NOT IN ('android', 'ios', 'desktop', 'web') THEN
         RETURN jsonb_build_object('status', 'INVALID_PLATFORM');
     END IF;
@@ -638,6 +642,10 @@ BEGIN
 
     IF p_device_id IS NULL OR char_length(btrim(p_device_id)) NOT BETWEEN 1 AND 128 THEN
         RETURN jsonb_build_object('status', 'INVALID_DEVICE_ID');
+    END IF;
+
+    IF public._plane_c_is_device_revoked(v_user_id, btrim(p_device_id)) THEN
+        RETURN jsonb_build_object('status', 'DEVICE_REVOKED');
     END IF;
 
     UPDATE public.user_presence

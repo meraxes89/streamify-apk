@@ -175,6 +175,11 @@ BEGIN
     WHERE user_id = v_user_id
     FOR UPDATE;
 
+    -- Re-check device revocation after acquiring the per-user lock to close the TOCTOU window
+    IF public._plane_c_is_device_revoked(v_user_id, v_device_id) THEN
+        RETURN jsonb_build_object('protocol_version', 5, 'status', 'DEVICE_REVOKED');
+    END IF;
+
     -- 2. Process each mutation deterministically in batch order
     FOR v_mut IN SELECT value FROM jsonb_array_elements(p_mutations) LOOP
         v_hlc := public._v5_try_parse_bigint(v_mut->>'hlc');
