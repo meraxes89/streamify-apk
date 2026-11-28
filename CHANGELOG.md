@@ -6,6 +6,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Sync v5 Plane B — Append-Only Event Ingestion, Search & Wrapped (S11, S19, S22)**: Deployed `20261201000200_v5_plane_b_events_and_wrapped.sql` (monthly partitioned `user_listening_history`, `playback_session_checkpoints`, `user_listening_daily`, `user_search_state` + `(user_id, query_norm)` `user_search_history`, `user_wrapped_snapshots`, `v_user_listening_daily`/`v_user_graph_summary` compatibility views, daily `pg_cron` `maintain_plane_b_partitions`, all 9 client RPCs, and v4 `sync_push` shim routing with zero changelog pollution); added `PlaneBEventClient`, wired `SupabaseWrappedSync`, and added `PlaybackEventPipeline`, `SearchHistoryCoordinator`, and `WrappedSyncCoordinator`.
 - **Sync v5 Plane A — Authoritative Library & Playlist State (S11, S22, S23)**: Deployed `20261201000000_v5_plane_a_expand_and_backfill.sql` and `20261201000100_v5_plane_a_rpcs_and_shim.sql` (`sync_push_v5`, `sync_pull_v5`, `sync_bootstrap_v5`, `sync_gc_v5`, Base-62 `sort_key` on `playlist_tracks`, HLC backfill, trigger removal, single-policy `FORCE ROW LEVEL SECURITY`, and v4 shims); added `docs/contracts/sync-contract-v5.json`, `ADR-011`, S23 CI gates, and KMP v5 transport/client modules (`SupabaseRpcExecutor`, `PlaneAStateSyncClient`, `LongAsStringSerializer`, `FractionalIndex`, reflection-free `SyncWriteGuard`, `SyncV5Store`, `DefaultSyncSessionLifecycle`, `PlaneAStateSyncCoordinator`, `SyncOutboxProcessor`, `DeltaReplicator`, `BootstrapCoordinator`).
 
 ### Fixed
