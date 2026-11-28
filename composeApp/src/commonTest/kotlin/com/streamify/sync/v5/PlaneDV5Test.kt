@@ -2,39 +2,22 @@ package com.streamify.sync.v5
 
 import com.streamify.supabase.v5.CatalogTrackDto
 import com.streamify.supabase.v5.PlaneDCatalogClient
-import com.streamify.supabase.v5.RpcHttpTransport
-import com.streamify.supabase.v5.RpcTransportResponse
-import com.streamify.supabase.v5.SupabaseRpcExecutor
 import com.streamify.supabase.v5.TrackHintInputDto
 import com.streamify.sync.v5.planed.CatalogHydrationCoordinator
 import com.streamify.sync.v5.planed.InMemorySongCatalogStore
 import com.streamify.sync.v5.planed.LocalSongCatalogRecord
-import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class PlaneDV5Test {
 
     private fun fakeClient(
-        handler: suspend (rpcName: String, bodyJson: String) -> RpcTransportResponse,
-    ): PlaneDCatalogClient {
-        val transport = object : RpcHttpTransport {
-            override suspend fun postRpc(
-                rpcName: String,
-                bodyJson: String,
-                accessToken: String,
-            ): RpcTransportResponse = handler(rpcName, bodyJson)
-        }
-        val executor = SupabaseRpcExecutor(
-            transport = transport,
-            accessTokenProvider = { "token" },
-            refreshSession = { true },
-        )
-        return PlaneDCatalogClient(executor)
-    }
+        handler: suspend (rpcName: String, bodyJson: String) -> FakeRpcResponse,
+    ): PlaneDCatalogClient = PlaneDCatalogClient(FakeRpcExecutor(handler))
 
     @Test
-    fun monotonicMergeUpgradesPlaceholderAndNeverDowngradesHigherAuthority() = runTest {
+    fun monotonicMergeUpgradesPlaceholderAndNeverDowngradesHigherAuthority() : Unit = runBlocking {
         val store = InMemorySongCatalogStore()
         store.upsertMonotonic(
             LocalSongCatalogRecord(
@@ -98,7 +81,7 @@ class PlaneDV5Test {
     }
 
     @Test
-    fun hintsSkipVerifiedTracksAndRepairUsesGetTracksBatch() = runTest {
+    fun hintsSkipVerifiedTracksAndRepairUsesGetTracksBatch() : Unit = runBlocking {
         val store = InMemorySongCatalogStore()
         store.upsertMonotonic(
             LocalSongCatalogRecord(
@@ -122,8 +105,8 @@ class PlaneDV5Test {
 
         val client = fakeClient { rpcName, _ ->
             when (rpcName) {
-                "ingest_track_hints" -> RpcTransportResponse(200, """{"status":"OK","accepted":1}""")
-                "get_tracks_batch" -> RpcTransportResponse(
+                "ingest_track_hints" -> FakeRpcResponse(200, """{"status":"OK","accepted":1}""")
+                "get_tracks_batch" -> FakeRpcResponse(
                     200,
                     """
                     {

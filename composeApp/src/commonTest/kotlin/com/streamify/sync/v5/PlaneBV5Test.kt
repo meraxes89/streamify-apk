@@ -1,9 +1,6 @@
 package com.streamify.sync.v5
 
 import com.streamify.supabase.v5.PlaneBEventClient
-import com.streamify.supabase.v5.RpcHttpTransport
-import com.streamify.supabase.v5.RpcTransportResponse
-import com.streamify.supabase.v5.SupabaseRpcExecutor
 import com.streamify.sync.v5.planeb.InMemoryPlaybackEventStorage
 import com.streamify.sync.v5.planeb.InMemorySearchHistoryStorage
 import com.streamify.sync.v5.planeb.PendingPlaybackEvent
@@ -13,7 +10,7 @@ import com.streamify.sync.v5.planeb.PlaybackQueueState
 import com.streamify.sync.v5.planeb.SearchHistoryCoordinator
 import com.streamify.sync.v5.planeb.SearchQueueOp
 import com.streamify.sync.v5.planeb.WrappedSyncCoordinator
-import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlin.test.Test
@@ -24,25 +21,11 @@ import kotlin.test.assertTrue
 class PlaneBV5Test {
 
     private fun fakeClient(
-        handler: suspend (rpcName: String, bodyJson: String) -> RpcTransportResponse,
-    ): PlaneBEventClient {
-        val transport = object : RpcHttpTransport {
-            override suspend fun postRpc(
-                rpcName: String,
-                bodyJson: String,
-                accessToken: String,
-            ): RpcTransportResponse = handler(rpcName, bodyJson)
-        }
-        val executor = SupabaseRpcExecutor(
-            transport = transport,
-            accessTokenProvider = { "token" },
-            refreshSession = { true },
-        )
-        return PlaneBEventClient(executor)
-    }
+        handler: suspend (rpcName: String, bodyJson: String) -> FakeRpcResponse,
+    ): PlaneBEventClient = PlaneBEventClient(FakeRpcExecutor(handler))
 
     @Test
-    fun coalescesPlaybackCheckpointsAndRequeuesIfAdvancedMidFlight() = runTest {
+    fun coalescesPlaybackCheckpointsAndRequeuesIfAdvancedMidFlight() : Unit = runBlocking {
         val storage = InMemoryPlaybackEventStorage()
         lateinit var pipeline: PlaybackEventPipeline
         val client = fakeClient { rpcName, _ ->
@@ -56,7 +39,7 @@ class PlaneBV5Test {
                     listenedSec = 90,
                 )
             )
-            RpcTransportResponse(
+            FakeRpcResponse(
                 httpStatus = 200,
                 body = """
                     {
@@ -104,17 +87,17 @@ class PlaneBV5Test {
     }
 
     @Test
-    fun searchClearAllDropsPendingOpsAndReconcilesClearEpoch() = runTest {
+    fun searchClearAllDropsPendingOpsAndReconcilesClearEpoch() : Unit = runBlocking {
         val storage = InMemorySearchHistoryStorage()
         val calledRpcs = mutableListOf<String>()
         val client = fakeClient { rpcName, _ ->
             calledRpcs += rpcName
             when (rpcName) {
-                "clear_search_history" -> RpcTransportResponse(
+                "clear_search_history" -> FakeRpcResponse(
                     httpStatus = 200,
                     body = """{"status":"OK","search_cleared_at":"2026-11-28T00:20:00Z","clear_epoch":"3","purged_rows":2}""",
                 )
-                "fetch_search_history" -> RpcTransportResponse(
+                "fetch_search_history" -> FakeRpcResponse(
                     httpStatus = 200,
                     body = """
                         {
@@ -155,12 +138,12 @@ class PlaneBV5Test {
     }
 
     @Test
-    fun wrappedCoordinatorSkipsDuplicateChecksumUploads() = runTest {
+    fun wrappedCoordinatorSkipsDuplicateChecksumUploads() : Unit = runBlocking {
         var calls = 0
         val client = fakeClient { rpcName, _ ->
             assertEquals("upsert_wrapped_snapshot", rpcName)
             calls++
-            RpcTransportResponse(
+            FakeRpcResponse(
                 httpStatus = 200,
                 body = """{"status":"OK","applied":true,"period_key":"2026"}""",
             )

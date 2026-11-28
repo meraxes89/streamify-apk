@@ -85,7 +85,7 @@ class ClockSkewEstimator(
  * - HTTP `Date` / `server_time_ms` clock-skew sampling
  * - Global `DEVICE_REVOKED` event broadcast
  */
-class SupabaseRpcExecutor(
+open class SupabaseRpcExecutor(
     private val httpClient: HttpClient = SupabaseClient.httpClient,
     private val skewEstimator: ClockSkewEstimator = ClockSkewEstimator(),
     private val json: Json = DefaultJson,
@@ -93,7 +93,7 @@ class SupabaseRpcExecutor(
     private val _deviceRevokedEvents = MutableSharedFlow<DeviceRevokedEvent>(extraBufferCapacity = 4)
     val deviceRevokedEvents: SharedFlow<DeviceRevokedEvent> = _deviceRevokedEvents.asSharedFlow()
 
-    suspend fun <T> invoke(
+    open suspend fun <T> invoke(
         rpcName: String,
         bodyJson: String,
         deviceId: String? = null,
@@ -143,13 +143,24 @@ class SupabaseRpcExecutor(
     ): RpcResult<T> {
         val statusCode = response.status.value
         val rawBody = runCatching { response.bodyAsText() }.getOrElse { "" }
+        if (statusCode == 429) {
+            val retryAfterSec = response.headers[HttpHeaders.RetryAfter]?.toLongOrNull() ?: 15L
+            return RpcResult.RateLimited((retryAfterSec * 1000L).coerceIn(1_000L, 120_000L))
+        }
+        return decodeRawResponse(statusCode, rawBody, deviceId, decode)
+    }
 
+    protected fun <T> decodeRawResponse(
+        statusCode: Int,
+        rawBody: String,
+        deviceId: String,
+        decode: (JsonObject) -> T,
+    ): RpcResult<T> {
         if (statusCode == 401) {
             return RpcResult.Unauthorized("HTTP 401")
         }
         if (statusCode == 429) {
-            val retryAfterSec = response.headers[HttpHeaders.RetryAfter]?.toLongOrNull() ?: 15L
-            return RpcResult.RateLimited((retryAfterSec * 1000L).coerceIn(1_000L, 120_000L))
+            return RpcResult.RateLimited(15_000L)
         }
         if (statusCode >= 500) {
             return RpcResult.TransientFailure(statusCode, rawBody.take(256))
