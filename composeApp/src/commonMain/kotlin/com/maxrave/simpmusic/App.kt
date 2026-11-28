@@ -698,7 +698,7 @@ fun App(
                 }
                 is AuthState.Unauthenticated -> {
                     com.streamify.sync.StreamifySyncEngine.resetForAccountSwitch()
-                    v5Coordinator?.onAccountSignedOut(com.streamify.sync.v5.SignOutReason.USER_LOGOUT)
+                    v5Coordinator?.onAccountSignedOut(com.streamify.sync.v5.SignOutReason.USER_SIGN_OUT)
                 }
                 else -> Unit
             }

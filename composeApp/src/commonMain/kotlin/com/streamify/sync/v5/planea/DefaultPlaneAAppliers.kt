@@ -59,7 +59,7 @@ private fun buildSyncedSongEntity(
     title = title,
     artistName = artistName,
     albumName = albumName,
-    duration = null,
+    duration = "",
     durationSeconds = durationSeconds,
     thumbnails = thumbnails,
     isAvailable = true,

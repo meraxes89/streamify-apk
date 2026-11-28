@@ -447,9 +447,11 @@ class DataStoreSyncV5Store(
         persistLocked()
     }
 
-    override suspend fun wipeAllForAccountSwitch() = mutex.withLock {
-        ensureLoadedLocked()
-        delegate.wipeAllForAccountSwitch()
-        runCatching { writeSnapshot("") }
+    override suspend fun wipeAllForAccountSwitch() {
+        mutex.withLock {
+            ensureLoadedLocked()
+            delegate.wipeAllForAccountSwitch()
+            runCatching { writeSnapshot("") }
+        }
     }
 }

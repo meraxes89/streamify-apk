@@ -28,7 +28,7 @@ interface CoreSyncSource {
 class CoreSyncBridge(
     private val coreSource: CoreSyncSource,
     private val store: SyncV5Store,
-    private val deviceIdProvider: () -> String,
+    private val deviceIdProvider: suspend () -> String,
 ) {
     private val mutex = Mutex()
     private val pendingCoreRowIds = linkedMapOf<String, Long>()
