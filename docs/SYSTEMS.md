@@ -54,15 +54,16 @@ Read order:
 | S21 | Server | backend | active | Fastify modular monolith: 6 vertical slices | `server/src/` | [12](architecture/engines/12_server_security.md) | [ADR-008](adr/ADR-008-server-contract-v4-and-sync-dataplane-hardening.md) |
 | S22 | Supabase | backend | active | Schema, RLS, RPCs, realtime, migrations | `supabase/` | [BACKEND RFC](rfc/RFC-002-backend-cloud-graph.md) | [ADR-003](adr/ADR-003-hybrid-sqlite-supabase-sync.md), [ADR-006](adr/ADR-006-unified-hybrid-sync-v2.md) |
 | S23 | CI, release & docs | engineering | active | 11 workflows, release gates, doc integrity scripts | `.github/workflows/`, `scripts/`, `docs/` | — | — |
+| S24 | Sovereign GPU engine | client | active | Skia/Metal runtime shaders, DRS, thermal/refresh governor | `streamify-modules/streamify-graphics/`, `docs/gpu/` | [ARCHITECTURE](gpu/ARCHITECTURE.md) | [ADR-010](adr/ADR-010-sovereign-gpu-engine.md) |
 
 ## Adding or retiring a subsystem
 
 1. Append a row to `IDEA_LOG.md` first; do not create a page for a spark.
-2. When the idea survives, allocate the next ID (`S24`), add the index row and
+2. When the idea survives, allocate the next ID (`S25`), add the index row and
    a stub page **before** the code lands.
 3. If the change is expensive to reverse, write an RFC; once accepted, write a
    new ADR that links back to it.
 4. On removal, set `status: removed`, record the removal commit and successor,
    and keep the page. Never delete the page or renumber the ID.
 
-<!-- doc-verified-against: dd58e0b3b60e16bed71200d58c9b204431562349 -->
+<!-- doc-verified-against: a4a7e0abb36f38ba5b6b8d6dcaa4b1529070a3dc -->

@@ -27,6 +27,7 @@ through three mechanisms (decision record:
 | supabase | `:streamify-supabase` | Ktor Supabase client: auth, library sync, friends, admin client, hybrid home repository; Koin `SupabaseModule` |
 | jam | `:streamify-jam` | `StreamifyJamCoordinator` — a pure-Kotlin `StateFlow` room state machine (create/join via 6-char code, transport/track broadcast keyed to `DacPresentationClock` timestamps) — plus the `BlendGenerator` (Jaccard blend score `jaccard*60+40`, clamped 45-98). Note: this module does not wrap the Rust jam engine; the two coexist (see ADR-004) |
 | ffmpeg-compat-shim | `:streamify-ffmpeg-compat-shim` | `com.arthenica.ffmpegkit` API implemented with zero-re-encode `MediaExtractor`/`MediaMuxer` remux; Android-only |
+| graphics | `:streamify-modules:streamify-graphics` | Sovereign GPU Engine: `Modifier.streamifyGlass` liquid-glass facade over `LiquidGlassCore.sksl` (SkSL/AGSL, Kyant optical parity — directional 45° rim, 1.5× vibrancy, adaptive "đục đen" scrim, fluid press interaction), 3-layer design tokens, TierGovernor 4-tier capability ladder, headless Skia parity golden tests (docs/gpu/) |
 
 ## lyrics-slyr (PR #253)
 
@@ -68,4 +69,4 @@ module (plain Ktor REST; Realtime is configured server-side).
 
 ---
 Verified against commit 8b858b1c. Staleness protocol: docs/adr/README.md.
-<!-- doc-verified-against: dd58e0b3b60e16bed71200d58c9b204431562349 -->
+<!-- doc-verified-against: a4a7e0abb36f38ba5b6b8d6dcaa4b1529070a3dc -->

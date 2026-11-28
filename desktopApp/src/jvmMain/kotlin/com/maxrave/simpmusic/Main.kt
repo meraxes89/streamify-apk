@@ -45,6 +45,12 @@ private fun forceLinuxWmClass(appName: String = "Streamify") {
 }
 
 fun main(args: Array<String>) {
+    // S24 Track D — Sovereign GPU Engine desktop backend tuning, before any
+    // Compose window exists: pins skiko to Direct3D 11 on Windows (bypassing
+    // the broken legacy Intel OpenGL drivers, ig4icd64.dll) unless the user
+    // forced an API; the live monitor refresh rate feeds the TierGovernor's
+    // frame budgets. Idempotent, non-throwing, no-op on Linux/macOS.
+    com.streamify.graphics.engine.SkikoDesktopBackendConfig.install()
     forceLinuxWmClass()
     runDesktopApp(args)
 }

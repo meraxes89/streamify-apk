@@ -75,6 +75,7 @@ class SimpMusicApplication :
             )
             loadKoinModules(viewModelModule)
             loadKoinModules(com.streamify.jam.di.streamifyAllModules)
+            loadKoinModules(com.streamify.graphics.di.streamifyGraphicsModule)
             loadKoinModules(com.streamify.sync.v5.di.syncV5Module)
         }
         com.streamify.media.hal.StreamifyMedia3Module.init(this)

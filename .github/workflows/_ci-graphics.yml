@@ -1,0 +1,208 @@
+# ============================================================================
+# _ci-graphics.yml — Tier 2 reusable spoke: Sovereign GPU Engine module
+# (docs/gpu/CI_TESTING_SPEC.md; docs/systems/S24-sovereign-graphics.md).
+#
+# Callable ONLY via workflow_call, from ci.yml (PR / merge_group / push-main
+# hub). Dispatched whenever the hub preflight's `graphics` path filter
+# matches: streamify-modules/streamify-graphics/**, docs/gpu/** or this file.
+#
+# PHASE 1 SCOPE (shipped with the Phase 1-B contracts PR):
+#   `:streamify-modules:streamify-graphics:assemble` — compile verification
+#   of the module across every KMP target (androidMain, desktopMain,
+#   wasmJsMain). Per the Phase 1 task book, module builds are verified in
+#   CI, never in a local sandbox.
+#
+# PHASE 2 SCOPE (Phase 2-B): Job 1 of the CI_TESTING_SPEC.md section 2
+#   matrix is live — `testDesktopUnitTest` runs the TierGovernor
+#   state-machine suite (cold start / 120-frame promotion / instant thermal
+#   demotion / 300-frame hysteresis) plus the Phase 1-A dialect
+#   transpilation gate on the desktop JVM lane.
+#
+# S24 SCOPE: desktop GPU spectrum matrix + Apple native matrix
+#   * Job 4: `testSoftwareRasterFallback` forks a dedicated test JVM with
+#     LIBGL_ALWAYS_SOFTWARE=1 so the live renderer-description seam resolves
+#     a Mesa CPU rasterizer and the engine clamps to Tier 4 (Safe) end to
+#     end. `testDesktopUnitTest` carries the S24 suites: DRS half-res golden
+#     renders, fractional-density physical-pixel resolution gates, and the
+#     forRefreshRate 60/144/240 Hz budget matrix.
+#   * Ubuntu lane: explicit `compileKotlinIosArm64` +
+#     `compileKotlinIosSimulatorArm64` gates — klib compilation of the
+#     iosMain/iosTest source sets needs no Apple host for a library module.
+#   * macOS lane (`ios-native-graphics`): `iosSimulatorArm64Test` runs the
+#     thermal-constant weld + bridge smoke suites natively on the
+#     Apple Silicon runner.
+#
+# Mirrors the _ci-android.yml jvm-unit lane's proven setup: recursive
+# submodule checkout (settings.gradle.kts maps :common/:data/:domain/...
+# into core/), core.patch application, JDK 21, cached NDK+CMake for AGP
+# sync, and -PskipExternalNativeBuild so no Rust/C++ lane ever runs here.
+# ============================================================================
+name: Graphics Engine Verification
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  assemble-graphics:
+    name: "Graphics: KMP assemble + governor state machine tests"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: 'recursive'
+
+      - name: Apply core submodule patch if present
+        run: |
+          if [ -f core.patch ]; then
+            git -C core apply --ignore-space-change --ignore-whitespace ../core.patch
+            echo "Successfully applied core.patch to core submodule"
+          fi
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v6
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      # Not needed to compile the graphics module itself, but Gradle
+      # configures the whole tree (settings.gradle.kts includes the core/
+      # submodule projects) and AGP sync wants the NDK present — the same
+      # tradeoff the _ci-android.yml jvm-unit lane makes.
+      - name: Cache Android NDK & CMake
+        id: ndk-cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            /usr/local/lib/android/sdk/ndk/26.1.10909125
+            /usr/local/lib/android/sdk/cmake/3.22.1
+          key: ${{ runner.os }}-ndk-26.1.10909125-cmake-3.22.1
+
+      - name: Install Android NDK for AGP sync
+        if: steps.ndk-cache.outputs.cache-hit != 'true'
+        run: |
+          SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          [ -x "$SDKMANAGER" ] || SDKMANAGER=sdkmanager
+          yes | "$SDKMANAGER" "ndk;26.1.10909125" "cmake;3.22.1" > /dev/null
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      - name: "Assemble (all KMP targets) + TierGovernor unit tests + iOS klib compiles"
+        env:
+          # S24 Kyant parity: make KyantParityGoldenTest dump the side-by-side
+          # comparison bitmaps (Kyant reference | S24 | amplified delta) under
+          # build/kyant-parity/ for the artifact upload below — the visual
+          # evidence behind every graphics PR.
+          STREAMIFY_GOLDEN_DUMP: "1"
+        run: |
+          chmod +x gradlew
+          set -o pipefail
+          ./gradlew :streamify-modules:streamify-graphics:assemble \
+            :streamify-modules:streamify-graphics:testDesktopUnitTest \
+            :streamify-modules:streamify-graphics:compileKotlinIosArm64 \
+            :streamify-modules:streamify-graphics:compileKotlinIosSimulatorArm64 \
+            :streamify-modules:streamify-graphics:compileTestKotlinIosSimulatorArm64 \
+            -PskipExternalNativeBuild=true \
+            --parallel --build-cache --configuration-cache \
+            --stacktrace 2>&1 | tee build.log
+
+      # CI_TESTING_SPEC.md section 2, Job 4 — software-raster fallback gate:
+      # dedicated Test JVM fork with LIBGL_ALWAYS_SOFTWARE=1 (Mesa onto a
+      # CPU rasterizer). Runs after the healthy-host suite so a clamp
+      # failure reads as a separate step, and --rerun (Gradle 7.6+, wrapper
+      # is 9.8.1) so the filtered execution can never be served from an
+      # up-to-date cache instead of actually forking the gate JVM.
+      - name: "Software-raster fallback gate (Job 4, LIBGL_ALWAYS_SOFTWARE=1)"
+        run: |
+          chmod +x gradlew
+          set -o pipefail
+          ./gradlew :streamify-modules:streamify-graphics:testSoftwareRasterFallback \
+            --rerun \
+            -PskipExternalNativeBuild=true \
+            --stacktrace 2>&1 | tee software-raster-gate.log
+
+      - name: Upload build log (debug aid)
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: graphics-build-log
+          path: |
+            build.log
+            software-raster-gate.log
+          if-no-files-found: ignore
+
+      - name: Upload test reports (debug aid)
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: graphics-test-reports
+          path: streamify-modules/streamify-graphics/build/test-results/**
+          if-no-files-found: ignore
+
+      # S24 Kyant optical parity: the side-by-side golden bitmaps rendered
+      # from the REAL LiquidGlassCore shader (Kyant reference | S24 |
+      # amplified delta, one triptych per light/dark/saturated backdrop).
+      - name: Upload Kyant parity bitmaps (visual evidence)
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: kyant-parity-bitmaps
+          path: streamify-modules/streamify-graphics/build/kyant-parity/**
+          if-no-files-found: ignore
+
+  # =========================================================================
+  # S24 Track E — iOS native test lane (docs/gpu/CI_TESTING_SPEC.md Job 6).
+  # The simulator-arm64 test binary runs natively on the Apple Silicon
+  # runner, exercising the real NSProcessInfo/NSNotificationCenter bridge:
+  # the Foundation thermal-constant weld + the bridge smoke suite. This is
+  # the linker half of the S24 DoD ("zero Kotlin/Native linker failures on
+  # both iosArm64 and iosSimulatorArm64") — device-framework linking stays
+  # covered by the _ci-ios.yml composeApp assemble spoke.
+  # =========================================================================
+  ios-native-graphics:
+    name: "Graphics: iOS Simulator Test (S24)"
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: 'recursive'
+
+      - name: Apply core submodule patch if present
+        run: |
+          if [ -f core.patch ]; then
+            git -C core apply --ignore-space-change --ignore-whitespace ../core.patch
+            echo "Successfully applied core.patch to core submodule"
+          fi
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v6
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: "Run iosSimulatorArm64Test (thermal weld + bridge smoke)"
+        run: |
+          chmod +x gradlew
+          set -o pipefail
+          ./gradlew :streamify-modules:streamify-graphics:iosSimulatorArm64Test \
+            -PskipExternalNativeBuild=true \
+            --parallel --build-cache \
+            --stacktrace 2>&1 | tee ios-test.log
+
+      - name: Upload iOS test log (debug aid)
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: graphics-ios-test-log
+          path: ios-test.log
+          if-no-files-found: ignore

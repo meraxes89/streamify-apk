@@ -103,13 +103,17 @@ if (streamifyDir.exists()) {
         ":streamify-lyrics-slyr",
         ":streamify-supabase",
         ":streamify-jam",
-        ":streamify-ffmpeg-compat-shim"
+        ":streamify-ffmpeg-compat-shim",
+        ":streamify-modules:streamify-graphics"
     )
     project(":streamify-media-hal").projectDir = File(streamifyDir, "media-hal")
     project(":streamify-lyrics-slyr").projectDir = File(streamifyDir, "lyrics-slyr")
     project(":streamify-supabase").projectDir = File(streamifyDir, "supabase")
     project(":streamify-jam").projectDir = File(streamifyDir, "jam")
     project(":streamify-ffmpeg-compat-shim").projectDir = File(streamifyDir, "ffmpeg-compat-shim")
+    // Sovereign GPU Engine (docs/gpu/): nested Gradle path so the CI task
+    // selectors in docs/gpu/CI_TESTING_SPEC.md resolve as documented.
+    project(":streamify-modules:streamify-graphics").projectDir = File(streamifyDir, "streamify-graphics")
 }
 
 // Legacy modules preservation (archived for git history and reference; not built in CMP)

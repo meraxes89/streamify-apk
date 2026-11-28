@@ -85,6 +85,11 @@ kotlin {
                 // Media player JVM UI primitives consumed by jvmMain expect/actuals.
                 implementation(projects.mediaJvmUi)
 
+                // Sovereign GPU Engine (S24) — desktop Skiko backend tuning
+                // (Windows D3D11 pin + live monitor refresh budgeting) wired
+                // into main() via SkikoDesktopBackendConfig.install().
+                implementation(projects.streamifyModules.streamifyGraphics)
+
                 // Commons-IO drives the custom AppImage packaging task below.
                 implementation(libs.commons.io)
                 // org.json is bundled in the Android SDK but missing on JVM desktop; PipePipeExtractor
